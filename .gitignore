@@ -1,4 +1,3 @@
 build/
 node_modules/
-lib/gitteh.js
-lib/args.js
+npm-debug.log
