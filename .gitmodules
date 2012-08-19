@@ -1,3 +1,6 @@
 [submodule "libgit2"]
 	path = libgit2
 	url = https://github.com/libgit2/libgit2.git
+[submodule "v8u"]
+	path = v8u
+	url = https://github.com/jmendeth/v8u.git
