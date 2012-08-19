@@ -40,7 +40,7 @@
     "url": "https://github.com/libgit2/node-gitteh/issues"
   },
   
-  "main": "./build/Release/gitteh",
+  "main": "build/Release/gitteh",
   "directories": {
     "lib": "src",
     "doc": "doc",
