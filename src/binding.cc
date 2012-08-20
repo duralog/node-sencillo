@@ -22,6 +22,8 @@
  * THE SOFTWARE.
  */
 
+#include "git2.h"
+
 #include "v8u.hpp"
 #include "version.hpp"
 
@@ -30,20 +32,30 @@
 
 #define GITTEH_VERSION 0,1,0
 
+using v8u::Symbol;
+
 using v8u::Version;
 using v8u::initVersion;
 
 namespace gitteh {
-  
+
+  inline v8::Local<v8::Object> libgit2Version() {
+    Version* v = new Version(LIBGIT2_VER_MAJOR,
+                             LIBGIT2_VER_MINOR,
+                             LIBGIT2_VER_REVISION);
+    return v->Wrapped();
+  }
+
   NODE_DEF_MAIN() {
     // Classes initialization
     //TODO: here, we should call init<class>(target)
-    
+
     // Version class & hash
     initVersion(target);
     v8::Local<v8::Object> versions = v8u::Obj();
-    versions->Set(v8u::Symbol("gitteh"), (new Version(GITTEH_VERSION))->Wrapped());
-    target->Set(v8u::Symbol("versions"), versions);
+    versions->Set(Symbol("gitteh"), (new Version(GITTEH_VERSION))->Wrapped());
+    versions->Set(Symbol("libgit2"), libgit2Version());
+    target->Set(Symbol("versions"), versions);
   } NODE_DEF_MAIN_END(gitteh)
-  
+
 };
