@@ -33,9 +33,7 @@
 #define GITTEH_VERSION 0,1,0
 
 using v8u::Symbol;
-
 using v8u::Version;
-using v8u::initVersion;
 
 namespace gitteh {
 
@@ -51,7 +49,7 @@ namespace gitteh {
     //TODO: here, we should call init<class>(target)
 
     // Version class & hash
-    initVersion(target);
+    Version::init(target);
     v8::Local<v8::Object> versions = v8u::Obj();
     versions->Set(Symbol("gitteh"), (new Version(GITTEH_VERSION))->Wrapped());
     versions->Set(Symbol("libgit2"), libgit2Version());
