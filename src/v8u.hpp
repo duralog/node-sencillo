@@ -61,8 +61,7 @@ namespace v8u {
     return ThrowException(v8::Exception::Error(v8::String::New(err.data(), err.length())));\
   } catch (...) {                                                              \
     return ThrowException(v8::Exception::Error(v8::String::New("Unknown error!")));\
-  }                                                                            \
-}
+  }
 
 #define V8_WRAP_END_NR()                                                       \
   } catch (v8::Persistent<v8::Value>& err) {                                   \
@@ -79,8 +78,7 @@ namespace v8u {
     ThrowException(v8::Exception::Error(v8::String::New(err.data(), err.length())));\
   } catch (...) {                                                              \
     ThrowException(v8::Exception::Error(v8::String::New("Unknown error!")));   \
-  }                                                                            \
-}
+  }
 
 // JS arguments
 
@@ -91,20 +89,35 @@ inline void CheckArguments(int min, const v8::Arguments& args) {
 
 // V8 callback templates
 
+#define V8_S_CALLBACK(IDENTIFIER)                                              \
+  v8::Handle<v8::Value> IDENTIFIER(const v8::Arguments& args)
+
 #define V8_CALLBACK(IDENTIFIER, MIN)                                           \
-v8::Handle<v8::Value> IDENTIFIER(const v8::Arguments& args) {                  \
+V8_S_CALLBACK(IDENTIFIER) {                                                    \
   V8_WRAP_START()                                                              \
     CheckArguments(MIN, args);
 
+#define V8_CALLBACK_END() V8_WRAP_END() }
+
+#define V8_S_GETTER(IDENTIFIER)                                                \
+  v8::Handle<v8::Value> IDENTIFIER(v8::Local<v8::String> name,                 \
+                                   const v8::AccessorInfo& info)
+
 #define V8_GETTER(IDENTIFIER)                                                  \
-v8::Handle<v8::Value> IDENTIFIER(v8::Local<v8::String> name,                   \
-                                 const v8::AccessorInfo& info) {               \
+V8_S_GETTER(IDENTIFIER) {                                                      \
   V8_WRAP_START()
 
+#define V8_GETTER_END() V8_WRAP_END() }
+
+#define V8_S_SETTER(IDENTIFIER)                                                \
+  void IDENTIFIER(v8::Local<v8::String> name, v8::Local<v8::Value> value,      \
+                  const v8::AccessorInfo& info)
+
 #define V8_SETTER(IDENTIFIER)                                                  \
-void IDENTIFIER(v8::Local<v8::String> name, v8::Local<v8::Value> value,        \
-                const v8::AccessorInfo& info) {                                \
+V8_S_SETTER(IDENTIFIER) {                                                      \
   V8_WRAP_START()
+
+#define V8_SETTER_END() V8_WRAP_END_NR() }
 
 #define V8_UNWRAP(CPP_TYPE, OBJ)                                               \
   CPP_TYPE* inst = node::ObjectWrap::Unwrap<CPP_TYPE>(OBJ.Holder());
@@ -112,21 +125,21 @@ void IDENTIFIER(v8::Local<v8::String> name, v8::Local<v8::Value> value,        \
 // Class-specific templates
 
 #define V8_CL_CTOR(CPP_TYPE, MIN)                                              \
-static v8::Handle<v8::Value> NewInstance(const v8::Arguments& args) {          \
-  V8_WRAP_START()                                                              \
+static V8_S_CALLBACK(NewInstance) {                                            \
   if ((args.Length()==1) && (args[0]->IsExternal())) {                         \
     ((CPP_TYPE*)v8::External::Unwrap(args[0]))->Wrap(args.This());             \
-    return scope.Close(args.This());                                           \
+    return args.This();                                                        \
   }                                                                            \
   if (!args.IsConstructCall())                                                 \
-    throw v8::Persistent<v8::Value>::New(v8::Exception::ReferenceError(v8::String::New("You must call this as a constructor")));\
+    return v8::ThrowException(v8u::ReferenceErr("You must call this as a constructor"));\
+  V8_WRAP_START()                                                              \
   CheckArguments(MIN, args);                                                   \
   CPP_TYPE* inst;
 
 #define V8_CL_CTOR_END()                                                       \
   inst->Wrap(args.This());                                                     \
   return scope.Close(args.This());                                             \
-V8_WRAP_END()
+V8_CALLBACK_END()
 
 #define V8_CL_GETTER(CPP_TYPE, CPP_VAR)                                        \
   static V8_GETTER(Getter__##CPP_VAR)                                          \
@@ -176,9 +189,41 @@ inline v8::Persistent<v8::Value> Persist(v8::Handle<v8::Value> handle) {
   return v8::Persistent<v8::Value>::New(handle);
 }
 
+template <class T> class Persisted {
+public:
+  inline Persisted() {};
+  inline Persisted(v8::Handle<T> value) : handle(v8::Persistent<T>::New(value)) {}
+  inline ~Persisted() {
+    if (!handle.IsEmpty()) handle.Dispose();
+  }
+  inline Persisted(Persisted<T>& other) : handle(v8::Persistent<T>::New(other.handle)) {}
+  inline v8::Persistent<T> operator*() const {
+    return handle;
+  }
+  inline Persisted<T>& operator=(const Persisted<T>& other) {
+    if (&other == this) return *this;
+    SetPersistent<T>(handle, other.handle);
+    return *this;
+  }
+  inline bool operator==(const Persisted<T>& other) const {
+    return handle==other.handle;
+  }
+  inline bool IsEmpty() const {
+    return handle.IsEmpty();
+  }
+  inline void Clear() {
+    ClearPersistent<T>(handle);
+  }
+  inline T* operator->() const {
+    return *handle;
+  }
+private:
+  v8::Persistent<T> handle;
+};
+
 // Type shortcuts
 
-inline v8::Local<v8::Integer> Int(int32_t integer) {
+inline v8::Local<v8::Integer> Int(int64_t integer) {
   return v8::Integer::New(integer);
 }
 
@@ -227,15 +272,15 @@ inline v8::Local<v8::FunctionTemplate> Func(v8::InvocationCallback function) {
 
 // Type casting/unwraping shortcuts
 
-inline double Num(v8::Local<v8::Value> hdl) {
+inline double Num(v8::Handle<v8::Value> hdl) {
   return hdl->NumberValue();
 }
 
-inline int64_t Int(v8::Local<v8::Value> hdl) {
-  return hdl->IntegerValue();
+inline int32_t Int(v8::Handle<v8::Value> hdl) {
+  return hdl->Int32Value();
 }
 
-inline uint32_t Uint(v8::Local<v8::Value> hdl) {
+inline uint32_t Uint(v8::Handle<v8::Value> hdl) {
   return hdl->Uint32Value();
 }
 
@@ -243,27 +288,27 @@ inline v8::Local<v8::Object> Obj(v8::Local<v8::Value> hdl) {
   return v8::Local<v8::Object>::Cast(hdl);
 }
 
-inline bool Bool(v8::Local<v8::Value> hdl) {
+inline bool Bool(v8::Handle<v8::Value> hdl) {
   return hdl->BooleanValue();
 }
 
 // Defining things
 
-#define V8_DEF_TYPE(CPP_TYPE, V8_NAME)                                         \
+#define V8_DEF_TYPE(V8_NAME)                                                   \
   v8::Persistent<v8::FunctionTemplate> prot = v8::Persistent<v8::FunctionTemplate>::New(\
-      v8::FunctionTemplate::New(CPP_TYPE::NewInstance));                       \
+      v8::FunctionTemplate::New(NewInstance));                                 \
   v8::Handle<v8::String> __cname = v8::String::NewSymbol(V8_NAME);             \
   prot->SetClassName(__cname);                                                 \
   prot->InstanceTemplate()->SetInternalFieldCount(1);
 
-#define V8_DEF_PROP(CPP_TYPE, CPP_VAR, V8_NAME)                                \
-  prot->InstanceTemplate()->SetAccessor(NODE_PSYMBOL(V8_NAME), CPP_TYPE::Getter__##CPP_VAR, CPP_TYPE::Setter__##CPP_VAR);
+#define V8_DEF_PROP(CPP_VAR, V8_NAME)                                          \
+  prot->InstanceTemplate()->SetAccessor(NODE_PSYMBOL(V8_NAME), Getter__##CPP_VAR, Setter__##CPP_VAR);
 
-#define V8_DEF_RPROP(CPP_TYPE, CPP_VAR, V8_NAME)                               \
-  prot->InstanceTemplate()->SetAccessor(NODE_PSYMBOL(V8_NAME), CPP_TYPE::Getter__##CPP_VAR);
+#define V8_DEF_RPROP(CPP_VAR, V8_NAME)                                         \
+  prot->InstanceTemplate()->SetAccessor(NODE_PSYMBOL(V8_NAME), Getter__##CPP_VAR);
 
-#define V8_DEF_METHOD(CPP_TYPE, CPP_METHOD, V8_NAME)                           \
-  NODE_SET_PROTOTYPE_METHOD(prot, V8_NAME, CPP_TYPE::CPP_METHOD);
+#define V8_DEF_METHOD(CPP_METHOD, V8_NAME)                                     \
+  NODE_SET_PROTOTYPE_METHOD(prot, V8_NAME, CPP_METHOD);
 
 #define V8_INHERIT(CLASSNAME) prot->Inherit(GetTemplate(CLASSNAME));
 
@@ -272,10 +317,10 @@ inline bool Bool(v8::Local<v8::Value> hdl) {
 #define NODE_DEF(IDENTIFIER)                                                   \
   void IDENTIFIER(v8::Handle<v8::Object> target)
 
-#define NODE_DEF_TYPE(CPP_TYPE, V8_NAME)                                       \
-  NODE_DEF(init##CPP_TYPE) {                                                   \
+#define NODE_DEF_TYPE(V8_NAME)                                                 \
+  inline static NODE_DEF(init) {                                               \
     v8::HandleScope scope;                                                     \
-    V8_DEF_TYPE(CPP_TYPE, V8_NAME)
+    V8_DEF_TYPE(V8_NAME)
 
 #define NODE_DEF_TYPE_END()                                                    \
     target->Set(__cname, prot->GetFunction());                                 \
@@ -314,7 +359,7 @@ void StoreTemplate(std::string classname, v8::Persistent<v8::FunctionTemplate> t
   //FIXME, LOW PRIORITY: make a weak ref, ensure removal when context deallocates
   std::pair<v8::Handle<v8::Context>, std::string> key (v8::Persistent<v8::Context>::New(v8::Context::GetCurrent()), classname);
   v8_wrapped_prototypes.insert(
-      std::make_pair< std::pair<v8::Handle<v8::Context>, std::string>,
+      std::pair< std::pair<v8::Handle<v8::Context>, std::string>,
                  v8::Persistent<v8::FunctionTemplate> > (key, templ)
   );
 }
