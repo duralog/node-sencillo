@@ -188,6 +188,7 @@ int git_attr_foreach(
 
 				error = callback(assign->name, assign->value, payload);
 				if (error) {
+					giterr_clear();
 					error = GIT_EUSER;
 					goto cleanup;
 				}
@@ -590,6 +591,18 @@ static int collect_attr_files(
 	return error;
 }
 
+static char *try_global_default(const char *relpath)
+{
+	git_buf dflt = GIT_BUF_INIT;
+	char *rval = NULL;
+
+	if (!git_futils_find_global_file(&dflt, relpath))
+		rval = git_buf_detach(&dflt);
+
+	git_buf_free(&dflt);
+
+	return rval;
+}
 
 int git_attr_cache__init(git_repository *repo)
 {
@@ -607,10 +620,14 @@ int git_attr_cache__init(git_repository *repo)
 	ret = git_config_get_string(&cache->cfg_attr_file, cfg, GIT_ATTR_CONFIG);
 	if (ret < 0 && ret != GIT_ENOTFOUND)
 		return ret;
+	if (ret == GIT_ENOTFOUND)
+		cache->cfg_attr_file = try_global_default(GIT_ATTR_CONFIG_DEFAULT);
 
 	ret = git_config_get_string(&cache->cfg_excl_file, cfg, GIT_IGNORE_CONFIG);
 	if (ret < 0 && ret != GIT_ENOTFOUND)
 		return ret;
+	if (ret == GIT_ENOTFOUND)
+		cache->cfg_excl_file = try_global_default(GIT_IGNORE_CONFIG_DEFAULT);
 
 	giterr_clear();
 

@@ -55,8 +55,44 @@ static void net_set_error(const char *str)
 static int ssl_set_error(gitno_ssl *ssl, int error)
 {
 	int err;
+	unsigned long e;
+
 	err = SSL_get_error(ssl->ssl, error);
-	giterr_set(GITERR_NET, "SSL error: %s", ERR_error_string(err, NULL));
+
+	assert(err != SSL_ERROR_WANT_READ);
+	assert(err != SSL_ERROR_WANT_WRITE);
+
+	switch (err) {
+	case SSL_ERROR_WANT_CONNECT:
+	case SSL_ERROR_WANT_ACCEPT:
+		giterr_set(GITERR_NET, "SSL error: connection failure\n");
+		break;
+	case SSL_ERROR_WANT_X509_LOOKUP:
+		giterr_set(GITERR_NET, "SSL error: x509 error\n");
+		break;
+	case SSL_ERROR_SYSCALL:
+		e = ERR_get_error();
+		if (e > 0) {
+			giterr_set(GITERR_NET, "SSL error: %s",
+					ERR_error_string(e, NULL));
+			break;
+		} else if (error < 0) {
+			giterr_set(GITERR_OS, "SSL error: syscall failure");
+			break;
+		}
+		giterr_set(GITERR_NET, "SSL error: received early EOF");
+		break;
+	case SSL_ERROR_SSL:
+		e = ERR_get_error();
+		giterr_set(GITERR_NET, "SSL error: %s",
+				ERR_error_string(e, NULL));
+		break;
+	case SSL_ERROR_NONE:
+	case SSL_ERROR_ZERO_RETURN:
+	default:
+		giterr_set(GITERR_NET, "SSL error: unknown error");
+		break;
+	}
 	return -1;
 }
 #endif
@@ -238,6 +274,10 @@ static int verify_server_cert(git_transport *t, const char *host)
 	void *addr;
 	int i = -1,j;
 
+	if (SSL_get_verify_result(t->ssl.ssl) != X509_V_OK) {
+		giterr_set(GITERR_SSL, "The SSL certificate is invalid");
+		return -1;
+	}
 
 	/* Try to parse the host as an IP address to see if it is */
 	if (inet_pton(AF_INET, host, &addr4)) {
@@ -286,7 +326,7 @@ static int verify_server_cert(git_transport *t, const char *host)
 	GENERAL_NAMES_free(alts);
 
 	if (matched == 0)
-		goto on_error;
+		goto cert_fail;
 
 	if (matched == 1)
 		return 0;
@@ -354,7 +394,7 @@ static int ssl_setup(git_transport *t, const char *host)
 		return ssl_set_error(&t->ssl, 0);
 
 	SSL_CTX_set_mode(t->ssl.ctx, SSL_MODE_AUTO_RETRY);
-	SSL_CTX_set_verify(t->ssl.ctx, SSL_VERIFY_PEER, NULL);
+	SSL_CTX_set_verify(t->ssl.ctx, SSL_VERIFY_NONE, NULL);
 	if (!SSL_CTX_set_default_verify_paths(t->ssl.ctx))
 		return ssl_set_error(&t->ssl, 0);
 
@@ -438,7 +478,7 @@ static int send_ssl(gitno_ssl *ssl, const char *msg, size_t len)
 
 	while (off < len) {
 		ret = SSL_write(ssl->ssl, msg + off, len - off);
-		if (ret <= 0)
+		if (ret <= 0 && ret != SSL_ERROR_WANT_WRITE)
 			return ssl_set_error(ssl, ret);
 
 		off += ret;

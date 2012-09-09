@@ -324,8 +324,8 @@ int git_indexer_stream_add(git_indexer_stream *idx, const void *data, size_t siz
 		if (git_vector_init(&idx->deltas, (unsigned int)(idx->nr_objects / 2), NULL) < 0)
 			return -1;
 
+		memset(stats, 0, sizeof(git_indexer_stats));
 		stats->total = (unsigned int)idx->nr_objects;
-		stats->processed = 0;
 	}
 
 	/* Now that we have data in the pack, let's try to parse it */
@@ -361,6 +361,7 @@ int git_indexer_stream_add(git_indexer_stream *idx, const void *data, size_t siz
 			if (error < 0)
 				return error;
 
+			stats->received++;
 			continue;
 		}
 
@@ -379,6 +380,7 @@ int git_indexer_stream_add(git_indexer_stream *idx, const void *data, size_t siz
 		git__free(obj.data);
 
 		stats->processed = (unsigned int)++processed;
+		stats->received++;
 	}
 
 	return 0;
@@ -577,9 +579,11 @@ void git_indexer_stream_free(git_indexer_stream *idx)
 	git_vector_foreach(&idx->objects, i, e)
 		git__free(e);
 	git_vector_free(&idx->objects);
-	git_vector_foreach(&idx->pack->cache, i, pe)
-		git__free(pe);
-	git_vector_free(&idx->pack->cache);
+	if (idx->pack) {
+		git_vector_foreach(&idx->pack->cache, i, pe)
+			git__free(pe);
+		git_vector_free(&idx->pack->cache);
+	}
 	git_vector_foreach(&idx->deltas, i, delta)
 		git__free(delta);
 	git_vector_free(&idx->deltas);

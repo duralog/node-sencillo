@@ -147,6 +147,20 @@ char *git_path_basename(const char *path)
 	return basename;
 }
 
+size_t git_path_basename_offset(git_buf *buffer)
+{
+	ssize_t slash;
+
+	if (!buffer || buffer->size <= 0)
+		return 0;
+
+	slash = git_buf_rfind_next(buffer, '/');
+
+	if (slash >= 0 && buffer->ptr[slash] == '/')
+		return (size_t)(slash + 1);
+
+	return 0;
+}
 
 const char *git_path_topdir(const char *path)
 {
@@ -191,6 +205,31 @@ int git_path_root(const char *path)
 		return offset;
 
 	return -1;	/* Not a real error - signals that path is not rooted */
+}
+
+int git_path_join_unrooted(
+	git_buf *path_out, const char *path, const char *base, ssize_t *root_at)
+{
+	int error, root;
+
+	assert(path && path_out);
+
+	root = git_path_root(path);
+
+	if (base != NULL && root < 0) {
+		error = git_buf_joinpath(path_out, base, path);
+
+		if (root_at)
+			*root_at = (ssize_t)strlen(base);
+	}
+	else {
+		error = git_buf_sets(path_out, path);
+
+		if (root_at)
+			*root_at = (root < 0) ? 0 : (ssize_t)root;
+	}
+
+	return error;
 }
 
 int git_path_prettify(git_buf *path_out, const char *path, const char *base)
@@ -387,6 +426,68 @@ bool git_path_isfile(const char *path)
 	return S_ISREG(st.st_mode) != 0;
 }
 
+#ifdef GIT_WIN32
+
+bool git_path_is_empty_dir(const char *path)
+{
+	git_buf pathbuf = GIT_BUF_INIT;
+	HANDLE hFind = INVALID_HANDLE_VALUE;
+	wchar_t wbuf[GIT_WIN_PATH];
+	WIN32_FIND_DATAW ffd;
+	bool retval = true;
+
+	if (!git_path_isdir(path)) return false;
+
+	git_buf_printf(&pathbuf, "%s\\*", path);
+	git__utf8_to_16(wbuf, GIT_WIN_PATH, git_buf_cstr(&pathbuf));
+
+	hFind = FindFirstFileW(wbuf, &ffd);
+	if (INVALID_HANDLE_VALUE == hFind) {
+		giterr_set(GITERR_OS, "Couldn't open '%s'", path);
+		return false;
+	}
+
+	do {
+		if (!git_path_is_dot_or_dotdotW(ffd.cFileName)) {
+			retval = false;
+		}
+	} while (FindNextFileW(hFind, &ffd) != 0);
+
+	FindClose(hFind);
+	git_buf_free(&pathbuf);
+	return retval;
+}
+
+#else
+
+bool git_path_is_empty_dir(const char *path)
+{
+	DIR *dir = NULL;
+	struct dirent *e;
+	bool retval = true;
+
+	if (!git_path_isdir(path)) return false;
+
+	dir = opendir(path);
+	if (!dir) {
+		giterr_set(GITERR_OS, "Couldn't open '%s'", path);
+		return false;
+	}
+
+	while ((e = readdir(dir)) != NULL) {
+		if (!git_path_is_dot_or_dotdot(e->d_name)) {
+			giterr_set(GITERR_INVALID,
+						  "'%s' exists and is not an empty directory", path);
+			retval = false;
+			break;
+		}
+	}
+	closedir(dir);
+
+	return retval;
+}
+#endif
+
 int git_path_lstat(const char *path, struct stat *st)
 {
 	int err = 0;
@@ -439,12 +540,7 @@ bool git_path_contains_file(git_buf *base, const char *file)
 
 int git_path_find_dir(git_buf *dir, const char *path, const char *base)
 {
-	int error;
-
-	if (base != NULL && git_path_root(path) < 0)
-		error = git_buf_joinpath(dir, base, path);
-	else
-		error = git_buf_sets(dir, path);
+	int error = git_path_join_unrooted(dir, path, base, NULL);
 
 	if (!error) {
 		char buf[GIT_PATH_MAX];
@@ -551,14 +647,6 @@ int git_path_cmp(
 	return (c1 < c2) ? -1 : (c1 > c2) ? 1 : 0;
 }
 
-/* Taken from git.git */
-GIT_INLINE(int) is_dot_or_dotdot(const char *name)
-{
-	return (name[0] == '.' &&
-		(name[1] == '\0' ||
-		 (name[1] == '.' && name[2] == '\0')));
-}
-
 int git_path_direach(
 	git_buf *path,
 	int (*fn)(void *, git_buf *),
@@ -587,7 +675,7 @@ int git_path_direach(
 	while (p_readdir_r(dir, de_buf, &de) == 0 && de != NULL) {
 		int result;
 
-		if (is_dot_or_dotdot(de->d_name))
+		if (git_path_is_dot_or_dotdot(de->d_name))
 			continue;
 
 		if (git_buf_puts(path, de->d_name) < 0) {
@@ -646,7 +734,7 @@ int git_path_dirload(
 		char *entry_path;
 		size_t entry_len;
 
-		if (is_dot_or_dotdot(de->d_name))
+		if (git_path_is_dot_or_dotdot(de->d_name))
 			continue;
 
 		entry_len = strlen(de->d_name);
