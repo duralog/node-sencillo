@@ -58,6 +58,11 @@ extern int git_path_dirname_r(git_buf *buffer, const char *path);
 extern char *git_path_basename(const char *path);
 extern int git_path_basename_r(git_buf *buffer, const char *path);
 
+/* Return the offset of the start of the basename.  Unlike the other
+ * basename functions, this returns 0 if the path is empty.
+ */
+extern size_t git_path_basename_offset(git_buf *buffer);
+
 extern const char *git_path_topdir(const char *path);
 
 /**
@@ -80,7 +85,24 @@ extern int git_path_to_dir(git_buf *path);
  */
 extern void git_path_string_to_dir(char* path, size_t size);
 
+/**
+ * Taken from git.git; returns nonzero if the given path is "." or "..".
+ */
+GIT_INLINE(int) git_path_is_dot_or_dotdot(const char *name)
+{
+	return (name[0] == '.' &&
+			  (name[1] == '\0' ||
+				(name[1] == '.' && name[2] == '\0')));
+}
+
 #ifdef GIT_WIN32
+GIT_INLINE(int) git_path_is_dot_or_dotdotW(const wchar_t *name)
+{
+	return (name[0] == L'.' &&
+			  (name[1] == L'\0' ||
+				(name[1] == L'.' && name[2] == L'\0')));
+}
+
 /**
  * Convert backslashes in path to forward slashes.
  */
@@ -130,6 +152,11 @@ extern bool git_path_isdir(const char *path);
 extern bool git_path_isfile(const char *path);
 
 /**
+ * Check if the given path is a directory, and is empty.
+ */
+extern bool git_path_is_empty_dir(const char *path);
+
+/**
  * Stat a file and/or link and set error if needed.
  */
 extern int git_path_lstat(const char *path, struct stat *st);
@@ -162,6 +189,15 @@ extern bool git_path_contains_dir(git_buf *parent, const char *subdir);
  * @return true if file exists, false otherwise.
  */
 extern bool git_path_contains_file(git_buf *dir, const char *file);
+
+/**
+ * Prepend base to unrooted path or just copy path over.
+ *
+ * This will optionally return the index into the path where the "root"
+ * is, either the end of the base directory prefix or the path root.
+ */
+extern int git_path_join_unrooted(
+	git_buf *path_out, const char *path, const char *base, ssize_t *root_at);
 
 /**
  * Clean up path, prepending base if it is not already rooted.

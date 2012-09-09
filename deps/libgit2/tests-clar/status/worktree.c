@@ -484,7 +484,7 @@ static void fill_index_wth_head_entries(git_repository *repo, git_index *index)
 	cl_git_pass(git_commit_lookup(&commit, repo, &oid));
 	cl_git_pass(git_commit_tree(&tree, commit));
 
-	cl_git_pass(git_index_read_tree(index, tree));
+	cl_git_pass(git_index_read_tree(index, tree, NULL));
 	cl_git_pass(git_index_write(index));
 
 	git_tree_free(tree);
@@ -683,7 +683,7 @@ static unsigned int filemode_statuses[] = {
 	GIT_STATUS_WT_NEW
 };
 
-static const size_t filemode_count = 8;
+static const int filemode_count = 8;
 
 void test_status_worktree__filemode_changes(void)
 {
@@ -697,7 +697,7 @@ void test_status_worktree__filemode_changes(void)
 	if (cl_is_chmod_supported())
 		cl_git_pass(git_config_set_bool(cfg, "core.filemode", true));
 	else {
-		unsigned int i;
+		int i;
 		cl_git_pass(git_config_set_bool(cfg, "core.filemode", false));
 
 		/* won't trust filesystem mode diffs, so these will appear unchanged */
