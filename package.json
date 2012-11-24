@@ -42,11 +42,12 @@
   
   "main": "build/Release/gitteh",
   "directories": {
-    "lib": "src",
+    "src": "src",
     "doc": "doc",
     "example": "examples"
   },
   "scripts": {
+    "preinstall": "mkdir deps/libgit2/build && cd deps/libgit2/build && cmake -D CMAKE_BUILD_TYPE=Release -D BUILD_SHARED_LIBS=false .. && cmake --build . && cd ../../.. && node-gyp rebuild",
     "test": "mocha"
   }
 }
