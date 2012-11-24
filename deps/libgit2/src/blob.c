@@ -68,6 +68,7 @@ static int write_file_stream(
 	int fd, error;
 	char buffer[4096];
 	git_odb_stream *stream = NULL;
+	ssize_t read_len = -1, written = 0;
 
 	if ((error = git_odb_open_wstream(
 			&stream, odb, (size_t)file_size, GIT_OBJ_BLOB)) < 0)
@@ -78,19 +79,17 @@ static int write_file_stream(
 		return -1;
 	}
 
-	while (!error && file_size > 0) {
-		ssize_t read_len = p_read(fd, buffer, sizeof(buffer));
-
-		if (read_len < 0) {
-			giterr_set(
-				GITERR_OS, "Failed to create blob. Can't read whole file");
-			error = -1;
-		}
-		else if (!(error = stream->write(stream, buffer, read_len)))
-			file_size -= read_len;
+	while (!error && (read_len = p_read(fd, buffer, sizeof(buffer))) > 0) {
+		error = stream->write(stream, buffer, read_len);
+		written += read_len;
 	}
 
 	p_close(fd);
+
+	if (written != file_size || read_len < 0) {
+		giterr_set(GITERR_OS, "Failed to read file into stream");
+		error = -1;
+	}
 
 	if (!error)
 		error = stream->finalize_write(oid, stream);
@@ -212,8 +211,10 @@ int git_blob_create_fromfile(git_oid *oid, git_repository *repo, const char *pat
 	const char *workdir;
 	int error;
 
+	if ((error = git_repository__ensure_not_bare(repo, "create blob from file")) < 0)
+		return error;
+
 	workdir = git_repository_workdir(repo);
-	assert(workdir); /* error to call this on bare repo */
 
 	if (git_buf_joinpath(&full_path, workdir, path) < 0) {
 		git_buf_free(&full_path);
@@ -254,11 +255,19 @@ int git_blob_create_fromchunks(
 	int error = -1, read_bytes;
 	char *content = NULL;
 	git_filebuf file = GIT_FILEBUF_INIT;
+	git_buf path = GIT_BUF_INIT;
+
+	if (git_buf_join_n(
+		&path, '/', 3, 
+		git_repository_path(repo),
+		GIT_OBJECTS_DIR, 
+		"streamed") < 0)
+			goto cleanup;
 
 	content = git__malloc(BUFFER_SIZE);
 	GITERR_CHECK_ALLOC(content);
 
-	if (git_filebuf_open(&file, hintpath == NULL ? "streamed" : hintpath, GIT_FILEBUF_TEMPORARY) < 0)
+	if (git_filebuf_open(&file, git_buf_cstr(&path), GIT_FILEBUF_TEMPORARY) < 0)
 		goto cleanup;
 
 	while (1) {
@@ -282,6 +291,7 @@ int git_blob_create_fromchunks(
 	error = blob_create_internal(oid, repo, file.path_lock, hintpath, hintpath != NULL);
 
 cleanup:
+	git_buf_free(&path);
 	git_filebuf_cleanup(&file);
 	git__free(content);
 	return error;

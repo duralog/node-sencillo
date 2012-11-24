@@ -28,7 +28,7 @@ int git_libgit2_capabilities()
 #ifdef GIT_THREADS
 		| GIT_CAP_THREADS
 #endif
-#ifdef GIT_SSL
+#if defined(GIT_SSL) || defined(GIT_WINHTTP)
 		| GIT_CAP_HTTPS
 #endif
 	;
@@ -174,6 +174,36 @@ int git__strtol32(int32_t *result, const char *nptr, const char **endptr, int ba
 	return error;
 }
 
+int git__strcmp(const char *a, const char *b)
+{
+	while (*a && *b && *a == *b)
+		++a, ++b;
+	return (int)(*(const unsigned char *)a) - (int)(*(const unsigned char *)b);
+}
+
+int git__strcasecmp(const char *a, const char *b)
+{
+	while (*a && *b && tolower(*a) == tolower(*b))
+		++a, ++b;
+	return (tolower(*a) - tolower(*b));
+}
+
+int git__strncmp(const char *a, const char *b, size_t sz)
+{
+	while (sz && *a && *b && *a == *b)
+		--sz, ++a, ++b;
+	if (!sz)
+		return 0;
+	return (int)(*(const unsigned char *)a) - (int)(*(const unsigned char *)b);
+}
+
+int git__strncasecmp(const char *a, const char *b, size_t sz)
+{
+	while (sz && *a && *b && tolower(*a) == tolower(*b))
+		--sz, ++a, ++b;
+	return !sz ? 0 : (tolower(*a) - tolower(*b));
+}
+
 void git__strntolower(char *str, size_t len)
 {
 	size_t i;
@@ -197,6 +227,11 @@ int git__prefixcmp(const char *str, const char *prefix)
 		if ((s = *(str++)) != p)
 			return s - p;
 	}
+}
+
+int git__prefixcmp_icase(const char *str, const char *prefix)
+{
+	return strncasecmp(str, prefix, strlen(prefix));
 }
 
 int git__suffixcmp(const char *str, const char *suffix)
@@ -427,12 +462,8 @@ int git__strcmp_cb(const void *a, const void *b)
 int git__parse_bool(int *out, const char *value)
 {
 	/* A missing value means true */
-	if (value == NULL) {
-		*out = 1;
-		return 0;
-	}
-
-	if (!strcasecmp(value, "true") ||
+	if (value == NULL ||
+		!strcasecmp(value, "true") ||
 		!strcasecmp(value, "yes") ||
 		!strcasecmp(value, "on")) {
 		*out = 1;
@@ -440,7 +471,8 @@ int git__parse_bool(int *out, const char *value)
 	}
 	if (!strcasecmp(value, "false") ||
 		!strcasecmp(value, "no") ||
-		!strcasecmp(value, "off")) {
+		!strcasecmp(value, "off") ||
+		value[0] == '\0') {
 		*out = 0;
 		return 0;
 	}

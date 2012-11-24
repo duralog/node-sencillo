@@ -11,6 +11,7 @@
 #include "types.h"
 #include "oid.h"
 #include "odb_backend.h"
+#include "indexer.h"
 
 /**
  * @file git2/odb.h
@@ -263,6 +264,26 @@ GIT_EXTERN(int) git_odb_open_wstream(git_odb_stream **stream, git_odb *db, size_
 GIT_EXTERN(int) git_odb_open_rstream(git_odb_stream **stream, git_odb *db, const git_oid *oid);
 
 /**
+ * Open a stream for writing a pack file to the ODB.
+ *
+ * If the ODB layer understands pack files, then the given
+ * packfile will likely be streamed directly to disk (and a
+ * corresponding index created).  If the ODB layer does not
+ * understand pack files, the objects will be stored in whatever
+ * format the ODB layer uses.
+ *
+ * @see git_odb_writepack
+ *
+ * @param writepack pointer to the writepack functions
+ * @param db object database where the stream will read from
+ * @param progress_cb function to call with progress information.
+ * Be aware that this is called inline with network and indexing operations,
+ * so performance may be affected.
+ * @param progress_payload payload for the progress callback
+ */
+GIT_EXTERN(int) git_odb_write_pack(git_odb_writepack **writepack, git_odb *db, git_transfer_progress_callback progress_cb, void *progress_payload);
+
+/**
  * Determine the object-ID (sha1 hash) of a data buffer
  *
  * The resulting SHA-1 OID will be the identifier for the data
@@ -279,8 +300,10 @@ GIT_EXTERN(int) git_odb_hash(git_oid *id, const void *data, size_t len, git_otyp
 /**
  * Read a file from disk and fill a git_oid with the object id
  * that the file would have if it were written to the Object
- * Database as an object of the given type. Similar functionality
- * to git.git's `git hash-object` without the `-w` flag.
+ * Database as an object of the given type (w/o applying filters).
+ * Similar functionality to git.git's `git hash-object` without
+ * the `-w` flag, however, with the --no-filters flag.
+ * If you need filters, see git_repository_hashfile.
  *
  * @param out oid structure the result is written into.
  * @param path file to read and determine object id for

@@ -7,10 +7,12 @@
 #ifndef INCLUDE_attr_file_h__
 #define INCLUDE_attr_file_h__
 
+#include "git2/oid.h"
 #include "git2/attr.h"
 #include "vector.h"
 #include "pool.h"
 #include "buffer.h"
+#include "fileops.h"
 
 #define GIT_ATTR_FILE			".gitattributes"
 #define GIT_ATTR_FILE_INREPO	"info/attributes"
@@ -23,6 +25,7 @@
 #define GIT_ATTR_FNMATCH_IGNORE		(1U << 4)
 #define GIT_ATTR_FNMATCH_HASWILD	(1U << 5)
 #define GIT_ATTR_FNMATCH_ALLOWSPACE	(1U << 6)
+#define GIT_ATTR_FNMATCH_ICASE		(1U << 7)
 
 extern const char *git_attr__true;
 extern const char *git_attr__false;
@@ -53,27 +56,21 @@ typedef struct {
 } git_attr_assignment;
 
 typedef struct {
-	git_time_t seconds;
-	git_off_t  size;
-	unsigned int ino;
-} git_attr_file_stat_sig;
-
-typedef struct {
 	char *key;				/* cache "source#path" this was loaded from */
 	git_vector rules;		/* vector of <rule*> or <fnmatch*> */
 	git_pool *pool;
 	bool pool_is_allocated;
 	union {
 		git_oid oid;
-		git_attr_file_stat_sig st;
+		git_futils_filestamp stamp;
 	} cache_data;
 } git_attr_file;
 
 typedef struct {
-	git_buf     full;
-	const char *path;
-	const char *basename;
-	int         is_dir;
+	git_buf  full;
+	char    *path;
+	char    *basename;
+	int      is_dir;
 } git_attr_path;
 
 typedef enum {
@@ -96,7 +93,7 @@ extern void git_attr_file__free(git_attr_file *file);
 extern void git_attr_file__clear_rules(git_attr_file *file);
 
 extern int git_attr_file__parse_buffer(
-	git_repository *repo, const char *buf, git_attr_file *file);
+	git_repository *repo, void *parsedata, const char *buf, git_attr_file *file);
 
 extern int git_attr_file__lookup_one(
 	git_attr_file *file,

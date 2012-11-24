@@ -100,7 +100,7 @@ GIT_EXTERN(git_tree_entry *) git_tree_entry_dup(const git_tree_entry *entry);
  * @param tree a previously loaded tree.
  * @return object identity for the tree.
  */
-GIT_EXTERN(const git_oid *) git_tree_id(git_tree *tree);
+GIT_EXTERN(const git_oid *) git_tree_id(const git_tree *tree);
 
 /**
  * Get the number of entries listed in a tree
@@ -108,7 +108,7 @@ GIT_EXTERN(const git_oid *) git_tree_id(git_tree *tree);
  * @param tree a previously loaded tree.
  * @return the number of entries in the tree
  */
-GIT_EXTERN(unsigned int) git_tree_entrycount(git_tree *tree);
+GIT_EXTERN(unsigned int) git_tree_entrycount(const git_tree *tree);
 
 /**
  * Lookup a tree entry by its filename
@@ -183,24 +183,6 @@ GIT_EXTERN(int) git_tree_entry_to_object(
 	git_object **object_out,
 	git_repository *repo,
 	const git_tree_entry *entry);
-
-/**
- * Write a tree to the ODB from the index file
- *
- * This method will scan the index and write a representation
- * of its current state back to disk; it recursively creates
- * tree objects for each of the subtrees stored in the index,
- * but only returns the OID of the root tree. This is the OID
- * that can be used e.g. to create a commit.
- *
- * The index instance cannot be bare, and needs to be associated
- * to an existing repository.
- *
- * @param oid Pointer where to store the written tree
- * @param index Index to write
- * @return 0 or an error code
- */
-GIT_EXTERN(int) git_tree_create_fromindex(git_oid *oid, git_index *index);
 
 /**
  * Create a new tree builder.

@@ -7,13 +7,6 @@
 #ifndef INCLUDE_posix__w32_h__
 #define INCLUDE_posix__w32_h__
 
-#if !defined(__sun) && !defined(__amigaos4__)
-#	include <fnmatch.h>
-#	define p_fnmatch(p, s, f) fnmatch(p, s, f)
-#else
-#	include "compat/fnmatch.h"
-#endif
-
 #include <stdio.h>
 
 #define p_lstat(p,b) lstat(p,b)
@@ -28,5 +21,9 @@
 #define p_snprintf(b, c, f, ...) snprintf(b, c, f, __VA_ARGS__)
 #define p_mkstemp(p) mkstemp(p)
 #define p_setenv(n,v,o) setenv(n,v,o)
+#define p_inet_pton(a, b, c) inet_pton(a, b, c)
+
+/* see win32/posix.h for explanation about why this exists */
+#define p_lstat_posixly(p,b) lstat(p,b)
 
 #endif

@@ -12,6 +12,7 @@
 #include "hash.h"
 #include "odb.h"
 #include "delta-apply.h"
+#include "filter.h"
 
 #include "git2/odb_backend.h"
 #include "git2/oid.h"
@@ -22,12 +23,16 @@
 #define GIT_LOOSE_PRIORITY 2
 #define GIT_PACKED_PRIORITY 1
 
+#define GIT_ALTERNATES_MAX_DEPTH 5
+
 typedef struct
 {
 	git_odb_backend *backend;
 	int priority;
 	int is_alternate;
 } backend_internal;
+
+static int load_alternates(git_odb *odb, const char *objects_dir, int alternate_depth);
 
 static int format_object_header(char *hdr, size_t n, size_t obj_len, git_otype obj_type)
 {
@@ -106,6 +111,9 @@ git_otype git_odb_object_type(git_odb_object *object)
 
 void git_odb_object_free(git_odb_object *object)
 {
+	if (object == NULL)
+		return;
+
 	git_cached_obj_decref((git_cached_obj *)object, &free_odb_object);
 }
 
@@ -113,31 +121,73 @@ int git_odb__hashfd(git_oid *out, git_file fd, size_t size, git_otype type)
 {
 	int hdr_len;
 	char hdr[64], buffer[2048];
-	git_hash_ctx *ctx;
+	git_hash_ctx ctx;
+	ssize_t read_len = 0;
+	int error = 0;
+
+	if (!git_object_typeisloose(type)) {
+		giterr_set(GITERR_INVALID, "Invalid object type for hash");
+		return -1;
+	}
+
+	if ((error = git_hash_ctx_init(&ctx)) < 0)
+		return -1;
 
 	hdr_len = format_object_header(hdr, sizeof(hdr), size, type);
 
-	ctx = git_hash_new_ctx();
+	if ((error = git_hash_update(&ctx, hdr, hdr_len)) < 0)
+		goto done;
 
-	git_hash_update(ctx, hdr, hdr_len);
+	while (size > 0 && (read_len = p_read(fd, buffer, sizeof(buffer))) > 0) {
+		if ((error = git_hash_update(&ctx, buffer, read_len)) < 0)
+			goto done;
 
-	while (size > 0) {
-		ssize_t read_len = read(fd, buffer, sizeof(buffer));
-
-		if (read_len < 0) {
-			git_hash_free_ctx(ctx);
-			giterr_set(GITERR_OS, "Error reading file");
-			return -1;
-		}
-
-		git_hash_update(ctx, buffer, read_len);
 		size -= read_len;
 	}
 
-	git_hash_final(out, ctx);
-	git_hash_free_ctx(ctx);
+	/* If p_read returned an error code, the read obviously failed.
+	 * If size is not zero, the file was truncated after we originally
+	 * stat'd it, so we consider this a read failure too */
+	if (read_len < 0 || size > 0) {
+		giterr_set(GITERR_OS, "Error reading file for hashing");
+		error = -1;
 
-	return 0;
+		goto done;
+		return -1;
+	}
+
+	error = git_hash_final(out, &ctx);
+
+done:
+	git_hash_ctx_cleanup(&ctx);
+	return error;
+}
+
+int git_odb__hashfd_filtered(
+	git_oid *out, git_file fd, size_t size, git_otype type, git_vector *filters)
+{
+	int error;
+	git_buf raw = GIT_BUF_INIT;
+	git_buf filtered = GIT_BUF_INIT;
+
+	if (!filters || !filters->length)
+		return git_odb__hashfd(out, fd, size, type);
+
+	/* size of data is used in header, so we have to read the whole file
+	 * into memory to apply filters before beginning to calculate the hash
+	 */
+
+	if (!(error = git_futils_readbuffer_fd(&raw, fd, size)))
+		error = git_filters_apply(&filtered, &raw, filters);
+
+	git_buf_free(&raw);
+
+	if (!error)
+		error = git_odb_hash(out, filtered.ptr, filtered.size, type);
+
+	git_buf_free(&filtered);
+
+	return error;
 }
 
 int git_odb__hashlink(git_oid *out, const char *path)
@@ -160,10 +210,11 @@ int git_odb__hashlink(git_oid *out, const char *path)
 		char *link_data;
 		ssize_t read_len;
 
-		link_data = git__malloc((size_t)size);
+		link_data = git__malloc((size_t)(size + 1));
 		GITERR_CHECK_ALLOC(link_data);
 
-		read_len = p_readlink(path, link_data, (size_t)(size + 1));
+		read_len = p_readlink(path, link_data, (size_t)size);
+		link_data[size] = '\0';
 		if (read_len != (ssize_t)size) {
 			giterr_set(GITERR_OS, "Failed to read symlink data for '%s'", path);
 			return -1;
@@ -171,7 +222,7 @@ int git_odb__hashlink(git_oid *out, const char *path)
 
 		result = git_odb_hash(out, link_data, (size_t)size, GIT_OBJ_BLOB);
 		git__free(link_data);
-	} else { 
+	} else {
 		int fd = git_futils_open_ro(path);
 		if (fd < 0)
 			return -1;
@@ -348,7 +399,7 @@ int git_odb_add_alternate(git_odb *odb, git_odb_backend *backend, int priority)
 	return add_backend_internal(odb, backend, priority, 1);
 }
 
-static int add_default_backends(git_odb *db, const char *objects_dir, int as_alternates)
+static int add_default_backends(git_odb *db, const char *objects_dir, int as_alternates, int alternate_depth)
 {
 	git_odb_backend *loose, *packed;
 
@@ -362,16 +413,21 @@ static int add_default_backends(git_odb *db, const char *objects_dir, int as_alt
 		add_backend_internal(db, packed, GIT_PACKED_PRIORITY, as_alternates) < 0)
 		return -1;
 
-	return 0;
+	return load_alternates(db, objects_dir, alternate_depth);
 }
 
-static int load_alternates(git_odb *odb, const char *objects_dir)
+static int load_alternates(git_odb *odb, const char *objects_dir, int alternate_depth)
 {
 	git_buf alternates_path = GIT_BUF_INIT;
 	git_buf alternates_buf = GIT_BUF_INIT;
 	char *buffer;
 	const char *alternate;
 	int result = 0;
+
+	/* Git reports an error, we just ignore anything deeper */
+	if (alternate_depth > GIT_ALTERNATES_MAX_DEPTH) {
+		return 0;
+	}
 
 	if (git_buf_joinpath(&alternates_path, objects_dir, GIT_ALTERNATES_FILE) < 0)
 		return -1;
@@ -393,14 +449,18 @@ static int load_alternates(git_odb *odb, const char *objects_dir)
 		if (*alternate == '\0' || *alternate == '#')
 			continue;
 
-		/* relative path: build based on the current `objects` folder */
-		if (*alternate == '.') {
+		/*
+		 * Relative path: build based on the current `objects`
+		 * folder. However, relative paths are only allowed in
+		 * the current repository.
+		 */
+		if (*alternate == '.' && !alternate_depth) {
 			if ((result = git_buf_joinpath(&alternates_path, objects_dir, alternate)) < 0)
 				break;
 			alternate = git_buf_cstr(&alternates_path);
 		}
 
-		if ((result = add_default_backends(odb, alternate, 1)) < 0)
+		if ((result = add_default_backends(odb, alternate, 1, alternate_depth + 1)) < 0)
 			break;
 	}
 
@@ -421,8 +481,7 @@ int git_odb_open(git_odb **out, const char *objects_dir)
 	if (git_odb_new(&db) < 0)
 		return -1;
 
-	if (add_default_backends(db, objects_dir, 0) < 0 ||
-		load_alternates(db, objects_dir) < 0)
+	if (add_default_backends(db, objects_dir, 0, 0) < 0)
 	{
 		git_odb_free(db);
 		return -1;
@@ -485,18 +544,35 @@ int git_odb_exists(git_odb *db, const git_oid *id)
 
 int git_odb_read_header(size_t *len_p, git_otype *type_p, git_odb *db, const git_oid *id)
 {
+	int error;
+	git_odb_object *object;
+
+	error = git_odb__read_header_or_object(&object, len_p, type_p, db, id);
+
+	if (object)
+		git_odb_object_free(object);
+
+	return error;
+}
+
+int git_odb__read_header_or_object(
+	git_odb_object **out, size_t *len_p, git_otype *type_p,
+	git_odb *db, const git_oid *id)
+{
 	unsigned int i;
 	int error = GIT_ENOTFOUND;
 	git_odb_object *object;
 
-	assert(db && id);
+	assert(db && id && out && len_p && type_p);
 
 	if ((object = git_cache_get(&db->cache, id)) != NULL) {
 		*len_p = object->raw.len;
 		*type_p = object->raw.type;
-		git_odb_object_free(object);
+		*out = object;
 		return 0;
 	}
+
+	*out = NULL;
 
 	for (i = 0; i < db->backends.length && error < 0; ++i) {
 		backend_internal *internal = git_vector_get(&db->backends, i);
@@ -518,7 +594,8 @@ int git_odb_read_header(size_t *len_p, git_otype *type_p, git_odb *db, const git
 
 	*len_p = object->raw.len;
 	*type_p = object->raw.type;
-	git_odb_object_free(object);
+	*out = object;
+
 	return 0;
 }
 
@@ -700,6 +777,31 @@ int git_odb_open_rstream(git_odb_stream **stream, git_odb *db, const git_oid *oi
 
 		if (b->readstream != NULL)
 			error = b->readstream(stream, b, oid);
+	}
+
+	if (error == GIT_PASSTHROUGH)
+		error = 0;
+
+	return error;
+}
+
+int git_odb_write_pack(struct git_odb_writepack **out, git_odb *db, git_transfer_progress_callback progress_cb, void *progress_payload)
+{
+	unsigned int i;
+	int error = GIT_ERROR;
+
+	assert(out && db);
+
+	for (i = 0; i < db->backends.length && error < 0; ++i) {
+		backend_internal *internal = git_vector_get(&db->backends, i);
+		git_odb_backend *b = internal->backend;
+
+		/* we don't write in alternates! */
+		if (internal->is_alternate)
+			continue;
+
+		if (b->writepack != NULL)
+			error = b->writepack(out, b, progress_cb, progress_payload);
 	}
 
 	if (error == GIT_PASSTHROUGH)

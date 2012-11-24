@@ -18,7 +18,10 @@ void test_refs_foreachglob__initialize(void)
 void test_refs_foreachglob__cleanup(void)
 {
 	git_reference_free(fake_remote);
+	fake_remote = NULL;
+
 	git_repository_free(repo);
+	repo = NULL;
 
 	cl_fixture_cleanup("testrepo.git");
 }
@@ -46,7 +49,7 @@ static void assert_retrieval(const char *glob, unsigned int flags, int expected_
 void test_refs_foreachglob__retrieve_all_refs(void)
 {
 	/* 8 heads (including one packed head) + 1 note + 2 remotes + 6 tags */
-	assert_retrieval("*", GIT_REF_LISTALL, 20);
+	assert_retrieval("*", GIT_REF_LISTALL, 21);
 }
 
 void test_refs_foreachglob__retrieve_remote_branches(void)
@@ -56,7 +59,7 @@ void test_refs_foreachglob__retrieve_remote_branches(void)
 
 void test_refs_foreachglob__retrieve_local_branches(void)
 {
-	assert_retrieval("refs/heads/*", GIT_REF_LISTALL, 11);
+	assert_retrieval("refs/heads/*", GIT_REF_LISTALL, 12);
 }
 
 void test_refs_foreachglob__retrieve_partially_named_references(void)

@@ -18,7 +18,10 @@ void test_refs_branches_foreach__initialize(void)
 void test_refs_branches_foreach__cleanup(void)
 {
 	git_reference_free(fake_remote);
+	fake_remote = NULL;
+
 	git_repository_free(repo);
+	repo = NULL;
 
 	cl_fixture_cleanup("testrepo.git");
 }
@@ -47,7 +50,7 @@ static void assert_retrieval(unsigned int flags, unsigned int expected_count)
 
 void test_refs_branches_foreach__retrieve_all_branches(void)
 {
-	assert_retrieval(GIT_BRANCH_LOCAL | GIT_BRANCH_REMOTE, 13);
+	assert_retrieval(GIT_BRANCH_LOCAL | GIT_BRANCH_REMOTE, 14);
 }
 
 void test_refs_branches_foreach__retrieve_remote_branches(void)
@@ -57,7 +60,7 @@ void test_refs_branches_foreach__retrieve_remote_branches(void)
 
 void test_refs_branches_foreach__retrieve_local_branches(void)
 {
-	assert_retrieval(GIT_BRANCH_LOCAL, 11);
+	assert_retrieval(GIT_BRANCH_LOCAL, 12);
 }
 
 struct expectations {

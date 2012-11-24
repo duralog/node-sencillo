@@ -186,6 +186,46 @@ int git_buf_puts_escaped(
 	return 0;
 }
 
+static const char b64str[64] =
+	"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+int git_buf_put_base64(git_buf *buf, const char *data, size_t len)
+{
+	size_t extra = len % 3;
+	uint8_t *write, a, b, c;
+	const uint8_t *read = (const uint8_t *)data;
+
+	ENSURE_SIZE(buf, buf->size + 4 * ((len / 3) + !!extra) + 1);
+	write = (uint8_t *)&buf->ptr[buf->size];
+
+	/* convert each run of 3 bytes into 4 output bytes */
+	for (len -= extra; len > 0; len -= 3) {
+		a = *read++;
+		b = *read++;
+		c = *read++;
+
+		*write++ = b64str[a >> 2];
+		*write++ = b64str[(a & 0x03) << 4 | b >> 4];
+		*write++ = b64str[(b & 0x0f) << 2 | c >> 6];
+		*write++ = b64str[c & 0x3f];
+	}
+
+	if (extra > 0) {
+		a = *read++;
+		b = (extra > 1) ? *read++ : 0;
+
+		*write++ = b64str[a >> 2];
+		*write++ = b64str[(a & 0x03) << 4 | b >> 4];
+		*write++ = (extra > 1) ? b64str[(b & 0x0f) << 2] : '=';
+		*write++ = '=';
+	}
+
+	buf->size = ((char *)write) - buf->ptr;
+	buf->ptr[buf->size] = '\0';
+
+	return 0;
+}
+
 int git_buf_vprintf(git_buf *buf, const char *format, va_list ap)
 {
 	int len;
@@ -508,4 +548,32 @@ bool git_buf_is_binary(const git_buf *buf)
 void git_buf_unescape(git_buf *buf)
 {
 	buf->size = git__unescape(buf->ptr);
+}
+
+int git_buf_splice(
+	git_buf *buf,
+	size_t where,
+	size_t nb_to_remove,
+	const char *data,
+	size_t nb_to_insert)
+{
+	assert(buf &&
+		where <= git_buf_len(buf) &&
+		where + nb_to_remove <= git_buf_len(buf));
+
+	/* Ported from git.git
+	 * https://github.com/git/git/blob/16eed7c/strbuf.c#L159-176
+	 */
+	if (git_buf_grow(buf, git_buf_len(buf) + nb_to_insert - nb_to_remove) < 0)
+		return -1;
+
+	memmove(buf->ptr + where + nb_to_insert,
+			buf->ptr + where + nb_to_remove,
+			buf->size - where - nb_to_remove);
+
+	memcpy(buf->ptr + where, data, nb_to_insert);
+
+	buf->size = buf->size + nb_to_insert - nb_to_remove;
+	buf->ptr[buf->size] = '\0';
+	return 0;
 }

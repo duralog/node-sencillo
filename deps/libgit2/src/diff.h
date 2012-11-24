@@ -7,6 +7,9 @@
 #ifndef INCLUDE_diff_h__
 #define INCLUDE_diff_h__
 
+#include "git2/diff.h"
+#include "git2/oid.h"
+
 #include <stdio.h>
 #include "vector.h"
 #include "buffer.h"
@@ -25,20 +28,38 @@ enum {
 	GIT_DIFFCAPS_USE_DEV          = (1 << 4), /* use st_dev? */
 };
 
+#define GIT_DELTA__TO_DELETE 10
+#define GIT_DELTA__TO_SPLIT  11
+
 struct git_diff_list {
 	git_refcount     rc;
 	git_repository   *repo;
 	git_diff_options opts;
 	git_vector       pathspec;
-	git_vector       deltas;    /* vector of git_diff_file_delta */
+	git_vector       deltas;    /* vector of git_diff_delta */
 	git_pool pool;
 	git_iterator_type_t old_src;
 	git_iterator_type_t new_src;
 	uint32_t diffcaps;
+
+	int (*strcomp)(const char *, const char *);
+	int (*strncomp)(const char *, const char *, size_t);
+	int (*pfxcomp)(const char *str, const char *pfx);
+	int (*entrycomp)(const void *a, const void *b);
 };
 
 extern void git_diff__cleanup_modes(
 	uint32_t diffcaps, uint32_t *omode, uint32_t *nmode);
+
+extern void git_diff_list_addref(git_diff_list *diff);
+
+extern int git_diff_delta__cmp(const void *a, const void *b);
+
+extern bool git_diff_delta__should_skip(
+	const git_diff_options *opts, const git_diff_delta *delta);
+
+extern int git_diff__oid_for_file(
+	git_repository *, const char *, uint16_t, git_off_t, git_oid *);
 
 #endif
 

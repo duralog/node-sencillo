@@ -8,6 +8,7 @@
 #define INCLUDE_buffer_h__
 
 #include "common.h"
+#include "git2/strarray.h"
 #include <stdarg.h>
 
 typedef struct {
@@ -153,5 +154,33 @@ bool git_buf_is_binary(const git_buf *buf);
 
 /* Unescape all characters in a buffer */
 void git_buf_unescape(git_buf *buf);
+
+/* Write data as base64 encoded in buffer */
+int git_buf_put_base64(git_buf *buf, const char *data, size_t len);
+
+/*
+ * Insert, remove or replace a portion of the buffer.
+ *
+ * @param buf The buffer to work with
+ *
+ * @param where The location in the buffer where the transformation
+ * should be applied.
+ *
+ * @param nb_to_remove The number of chars to be removed. 0 to not
+ * remove any character in the buffer.
+ *
+ * @param data A pointer to the data which should be inserted.
+ *
+ * @param nb_to_insert The number of chars to be inserted. 0 to not
+ * insert any character from the buffer.
+ *
+ * @return 0 or an error code.
+ */
+int git_buf_splice(
+	git_buf *buf,
+	size_t where,
+	size_t nb_to_remove,
+	const char *data,
+	size_t nb_to_insert);
 
 #endif
