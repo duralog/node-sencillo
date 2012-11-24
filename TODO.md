@@ -34,3 +34,6 @@ After updating submodules:
  ```bash
  $ git add -A libgit2 deps/libgit2
  ```
+
+- Git doesn't ignore already-tracked files, NPM does.  
+  Remove all entries in `.gitignore` that point to existing files, especially CMake.
