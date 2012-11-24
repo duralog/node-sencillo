@@ -3,12 +3,13 @@
     {
       "target_name": "gitteh",
       "sources": [ "src/binding.cc" ],
-      "include_dirs": [ 'deps/libgit2/include',
-                        'deps/libgit2/deps/http-parser',
-                        'deps/libgit2/deps/zlib',
-                        'deps/libgit2/deps/regex' ],
+      "include_dirs": [ 'deps/libgit2/include' ],
 
-      # Enable exceptions (see TooTallNate/node-gyp#17)
+      "libraries": [
+        "<(module_root_dir)/deps/libgit2/build/libgit2.a"
+      ],
+
+      # Enable exceptions, required by V8U (see TooTallNate/node-gyp#17)
       'cflags!': [ '-fno-exceptions' ],
       'cflags_cc!': [ '-fno-exceptions' ],
       'conditions': [
