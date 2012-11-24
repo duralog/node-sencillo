@@ -1,19 +1,36 @@
 TODO:
 
-* Lookup lightweight/annotated tag by name.
-* V8 AdjustForMemoryByCompensatingWithAReallyLongMethodName when we allocate libgit2 stuff
+- Hey, re-implement the binding!
+- Document.
+- Update tests.
+- Move the following to the wiki.
 
-# (Old) TODO - probably still relevant
+---
 
-* Integrity tests, make sure bindings don't choke or segfault on really bad data.
-* Possibly implement custom backend support, allowing JS callbacks to provide a custom git backend.
-* Check for memory leaks
-* Cache raw objects properly, so two requests for the same oid don't result in different objects.
-* Maybe add convenience methods to all existing wrapped objects to get the raw object equivalent of them.
-* Error handling in the EIO initialization stuff for objects. Not sure if something can go wrong there, but better safe than sorry.
-* Tests for initializing a new repository, bare or workingdir.
-* Stress test suite.
-* Perf tests.
-* See if we can remove the lock on repository for some serious speed.
-* Make sure all create/get stuff in repo is returning local copies of handles.
-* Update Index to not use getters/setters for index modification. Instead, work with an array like tree entries.
+TODO: detail updating submodules, better bullets format
+After updating submodules:
+
+- Remove the previous bundle from `deps/`:
+
+  ```bash
+  $ rm -r deps/libgit2
+  ```
+
+- Copy recursively the submodule folder into `deps/`:
+
+  ```bash
+  $ cp -r libgit2 deps
+  ```
+
+- Remove `.git`:
+
+  ```bash
+  $ cd deps/libgit2
+  $ rm -r .git
+  ```
+
+- Stage the changes for commit using `-A`
+
+ ```bash
+ $ git add -A libgit2 deps/libgit2
+ ```
