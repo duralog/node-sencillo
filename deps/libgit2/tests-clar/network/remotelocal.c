@@ -1,5 +1,4 @@
 #include "clar_libgit2.h"
-#include "transport.h"
 #include "buffer.h"
 #include "path.h"
 #include "posix.h"
@@ -7,45 +6,6 @@
 static git_repository *repo;
 static git_buf file_path_buf = GIT_BUF_INIT;
 static git_remote *remote;
-
-static void build_local_file_url(git_buf *out, const char *fixture)
-{
-	const char *in_buf;
-
-	git_buf path_buf = GIT_BUF_INIT;
-
-	cl_git_pass(git_path_prettify_dir(&path_buf, fixture, NULL));
-	cl_git_pass(git_buf_puts(out, "file://"));
-
-#ifdef _MSC_VER
-	/*
-	 * A FILE uri matches the following format: file://[host]/path
-	 * where "host" can be empty and "path" is an absolute path to the resource.
-	 * 
-	 * In this test, no hostname is used, but we have to ensure the leading triple slashes:
-	 * 
-	 * *nix: file:///usr/home/...
-	 * Windows: file:///C:/Users/...
-	 */
-	cl_git_pass(git_buf_putc(out, '/'));
-#endif
-
-	in_buf = git_buf_cstr(&path_buf);
-
-	/*
-	 * A very hacky Url encoding that only takes care of escaping the spaces
-	 */
-	while (*in_buf) {
-		if (*in_buf == ' ')
-			cl_git_pass(git_buf_puts(out, "%20"));
-		else
-			cl_git_pass(git_buf_putc(out, *in_buf));
-
-		in_buf++;
-	}
-
-	git_buf_free(&path_buf);
-}
 
 void test_network_remotelocal__initialize(void)
 {
@@ -55,9 +15,14 @@ void test_network_remotelocal__initialize(void)
 
 void test_network_remotelocal__cleanup(void)
 {
-	git_remote_free(remote);
 	git_buf_free(&file_path_buf);
+
+	git_remote_free(remote);
+	remote = NULL;
+
 	git_repository_free(repo);
+	repo = NULL;
+
 	cl_fixture_cleanup("remotelocal");
 }
 
@@ -83,7 +48,7 @@ static int ensure_peeled__cb(git_remote_head *head, void *payload)
 
 static void connect_to_local_repository(const char *local_repository)
 {
-	build_local_file_url(&file_path_buf, local_repository);
+	git_buf_sets(&file_path_buf, cl_git_path_url(local_repository));
 
 	cl_git_pass(git_remote_new(&remote, repo, NULL, git_buf_cstr(&file_path_buf), NULL));
 	cl_git_pass(git_remote_connect(remote, GIT_DIR_FETCH));
@@ -107,7 +72,7 @@ void test_network_remotelocal__retrieve_advertised_references(void)
 
 	cl_git_pass(git_remote_ls(remote, &count_ref__cb, &how_many_refs));
 
-	cl_assert_equal_i(how_many_refs, 25);
+	cl_assert_equal_i(how_many_refs, 26);
 }
 
 void test_network_remotelocal__retrieve_advertised_references_from_spaced_repository(void)
@@ -121,7 +86,7 @@ void test_network_remotelocal__retrieve_advertised_references_from_spaced_reposi
 
 	cl_git_pass(git_remote_ls(remote, &count_ref__cb, &how_many_refs));
 
-	cl_assert_equal_i(how_many_refs, 25);
+	cl_assert_equal_i(how_many_refs, 26);
 
 	git_remote_free(remote);	/* Disconnect from the "spaced repo" before the cleanup */
 	remote = NULL;

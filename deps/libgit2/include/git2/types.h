@@ -89,6 +89,9 @@ typedef struct git_odb_object git_odb_object;
 /** A stream to read/write from the ODB */
 typedef struct git_odb_stream git_odb_stream;
 
+/** A stream to write a packfile to the ODB */
+typedef struct git_odb_writepack git_odb_writepack;
+
 /**
  * Representation of an existing git repository,
  * including all its object contents
@@ -137,6 +140,9 @@ typedef struct git_reflog git_reflog;
 /** Representation of a git note */
 typedef struct git_note git_note;
 
+/** Representation of a git packbuilder */
+typedef struct git_packbuilder git_packbuilder;
+
 /** Time in a signature */
 typedef struct git_time {
 	git_time_t time; /** time in seconds from epoch */
@@ -173,6 +179,7 @@ typedef enum {
 typedef enum {
 	GIT_RESET_SOFT = 1,
 	GIT_RESET_MIXED = 2,
+	GIT_RESET_HARD = 3,
 } git_reset_type;
 
 /** Valid modes for index and tree entries. */

@@ -72,7 +72,7 @@ static int submodule_get(git_submodule **, git_repository *, const char *, const
 static void submodule_release(git_submodule *sm, int decr);
 static int submodule_load_from_index(git_repository *, const git_index_entry *);
 static int submodule_load_from_head(git_repository*, const char*, const git_oid*);
-static int submodule_load_from_config(const char *, const char *, void *);
+static int submodule_load_from_config(const git_config_entry *, void *);
 static int submodule_load_from_wd_lite(git_submodule *, const char *, void *);
 static int submodule_update_config(git_submodule *, const char *, const char *, bool, bool);
 static void submodule_mode_mismatch(git_repository *, const char *, unsigned int);
@@ -332,7 +332,7 @@ int git_submodule_add_finalize(git_submodule *sm)
 	assert(sm);
 
 	if ((error = git_repository_index__weakptr(&index, sm->owner)) < 0 ||
-		(error = git_index_add(index, GIT_MODULES_FILE, 0)) < 0)
+		(error = git_index_add_from_workdir(index, GIT_MODULES_FILE)) < 0)
 		return error;
 
 	return git_submodule_add_to_index(sm, true);
@@ -371,7 +371,7 @@ int git_submodule_add_to_index(git_submodule *sm, int write_index)
 
 	memset(&entry, 0, sizeof(entry));
 	entry.path = sm->path;
-	git_index__init_entry_from_stat(&st, &entry);
+	git_index_entry__init_from_stat(&entry, &st);
 
 	/* calling git_submodule_open will have set sm->wd_oid if possible */
 	if ((sm->flags & GIT_SUBMODULE_STATUS__WD_OID_VALID) == 0) {
@@ -393,7 +393,7 @@ int git_submodule_add_to_index(git_submodule *sm, int write_index)
 	git_commit_free(head);
 
 	/* add it */
-	error = git_index_add2(index, &entry);
+	error = git_index_add(index, &entry);
 
 	/* write it, if requested */
 	if (!error && write_index) {
@@ -733,7 +733,7 @@ int git_submodule_reload(git_submodule *submodule)
 
 	pos = git_index_find(index, submodule->path);
 	if (pos >= 0) {
-		git_index_entry *entry = git_index_get(index, pos);
+		git_index_entry *entry = git_index_get_byindex(index, pos);
 
 		if (S_ISGITLINK(entry->mode)) {
 			if ((error = submodule_load_from_index(repo, entry)) < 0)
@@ -974,11 +974,12 @@ static int submodule_config_error(const char *property, const char *value)
 }
 
 static int submodule_load_from_config(
-	const char *key, const char *value, void *data)
+	const git_config_entry *entry, void *data)
 {
 	git_repository *repo = data;
 	git_strmap *smcfg = repo->submodules;
 	const char *namestart, *property, *alternate = NULL;
+	const char *key = entry->name, *value = entry->value;
 	git_buf name = GIT_BUF_INIT;
 	git_submodule *sm;
 	bool is_path;
@@ -1055,7 +1056,7 @@ static int submodule_load_from_config(
 	else if (strcasecmp(property, "update") == 0) {
 		int val;
 		if (git_config_lookup_map_value(
-			_sm_update_map, ARRAY_SIZE(_sm_update_map), value, &val) < 0)
+			&val, _sm_update_map, ARRAY_SIZE(_sm_update_map), value) < 0)
 			return submodule_config_error("update", value);
 		sm->update_default = sm->update = (git_submodule_update_t)val;
 	}
@@ -1066,7 +1067,7 @@ static int submodule_load_from_config(
 	else if (strcasecmp(property, "ignore") == 0) {
 		int val;
 		if (git_config_lookup_map_value(
-			_sm_ignore_map, ARRAY_SIZE(_sm_ignore_map), value, &val) < 0)
+			&val, _sm_ignore_map, ARRAY_SIZE(_sm_ignore_map), value) < 0)
 			return submodule_config_error("ignore", value);
 		sm->ignore_default = sm->ignore = (git_submodule_ignore_t)val;
 	}
@@ -1117,7 +1118,7 @@ static int load_submodule_config_from_index(
 	git_iterator *i;
 	const git_index_entry *entry;
 
-	if ((error = git_iterator_for_index(&i, repo)) < 0)
+	if ((error = git_iterator_for_repo_index(&i, repo)) < 0)
 		return error;
 
 	error = git_iterator_current(i, &entry);
@@ -1204,7 +1205,7 @@ static git_config_file *open_gitmodules(
 			if (git_config_file__ondisk(&mods, path.ptr) < 0)
 				mods = NULL;
 			/* open should only fail here if the file is malformed */
-			else if (git_config_file_open(mods) < 0) {
+			else if (git_config_file_open(mods, GIT_CONFIG_LEVEL_LOCAL) < 0) {
 				git_config_file_free(mods);
 				mods = NULL;
 			}
@@ -1315,7 +1316,7 @@ static int lookup_head_remote(git_buf *url, git_repository *repo)
 	/* remote should refer to something like refs/remotes/ORIGIN/BRANCH */
 
 	if (git_reference_type(remote) != GIT_REF_SYMBOLIC ||
-		git__prefixcmp(git_reference_target(remote), "refs/remotes/") != 0)
+		git__prefixcmp(git_reference_target(remote), GIT_REFS_REMOTES_DIR) != 0)
 	{
 		giterr_set(GITERR_SUBMODULE,
 			"Cannot resolve relative URL when HEAD is not symbolic");
@@ -1323,7 +1324,7 @@ static int lookup_head_remote(git_buf *url, git_repository *repo)
 		goto cleanup;
 	}
 
-	scan = tgt = git_reference_target(remote) + strlen("refs/remotes/");
+	scan = tgt = git_reference_target(remote) + strlen(GIT_REFS_REMOTES_DIR);
 	while (*scan && (*scan != '/' || (scan > tgt && scan[-1] != '\\')))
 		scan++; /* find non-escaped slash to end ORIGIN name */
 
@@ -1454,10 +1455,10 @@ static int submodule_wd_status(unsigned int *status, git_submodule *sm)
 		if (sm->ignore == GIT_SUBMODULE_IGNORE_NONE)
 			opt.flags |= GIT_DIFF_INCLUDE_UNTRACKED;
 
-		error = git_diff_index_to_tree(sm_repo, &opt, sm_head, &diff);
+		error = git_diff_index_to_tree(&diff, sm_repo, sm_head, NULL, &opt);
 
 		if (!error) {
-			if (git_diff_entrycount(diff, -1) > 0)
+			if (git_diff_num_deltas(diff) > 0)
 				*status |= GIT_SUBMODULE_STATUS_WD_INDEX_MODIFIED;
 
 			git_diff_list_free(diff);
@@ -1471,15 +1472,16 @@ static int submodule_wd_status(unsigned int *status, git_submodule *sm)
 
 		/* perform index-to-workdir diff on submodule */
 
-		error = git_diff_workdir_to_index(sm_repo, &opt, &diff);
+		error = git_diff_workdir_to_index(&diff, sm_repo, NULL, &opt);
 
 		if (!error) {
-			int untracked = git_diff_entrycount(diff, GIT_DELTA_UNTRACKED);
+			size_t untracked =
+				git_diff_num_deltas_of_type(diff, GIT_DELTA_UNTRACKED);
 
 			if (untracked > 0)
 				*status |= GIT_SUBMODULE_STATUS_WD_UNTRACKED;
 
-			if (git_diff_entrycount(diff, -1) - untracked > 0)
+			if ((git_diff_num_deltas(diff) - untracked) > 0)
 				*status |= GIT_SUBMODULE_STATUS_WD_WD_MODIFIED;
 
 			git_diff_list_free(diff);

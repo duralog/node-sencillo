@@ -15,6 +15,8 @@ void test_reset_mixed__initialize(void)
 void test_reset_mixed__cleanup(void)
 {
 	git_object_free(target);
+	target = NULL;
+
 	cl_git_sandbox_cleanup();
 }
 
@@ -27,7 +29,7 @@ void test_reset_mixed__cannot_reset_in_a_bare_repository(void)
 
 	retrieve_target_from_oid(&target, bare, KNOWN_COMMIT_IN_BARE_REPO);
 
-	cl_git_fail(git_reset(bare, target, GIT_RESET_MIXED));
+	cl_assert_equal_i(GIT_EBAREREPO, git_reset(bare, target, GIT_RESET_MIXED));
 
 	git_repository_free(bare);
 }

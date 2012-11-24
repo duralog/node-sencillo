@@ -7,11 +7,15 @@
 #include "common.h"
 #include "fileops.h"
 #include <ctype.h>
+#if GIT_WIN32
+#include "win32/findfile.h"
+#endif
 
 int git_futils_mkpath2file(const char *file_path, const mode_t mode)
 {
 	return git_futils_mkdir(
-		file_path, NULL, mode, GIT_MKDIR_PATH | GIT_MKDIR_SKIP_LAST);
+		file_path, NULL, mode,
+		GIT_MKDIR_PATH | GIT_MKDIR_SKIP_LAST | GIT_MKDIR_VERIFY_DIR);
 }
 
 int git_futils_mktmp(git_buf *path_out, const char *filename)
@@ -115,11 +119,35 @@ mode_t git_futils_canonical_mode(mode_t raw_mode)
 		return 0;
 }
 
-int git_futils_readbuffer_updated(git_buf *buf, const char *path, time_t *mtime, int *updated)
+int git_futils_readbuffer_fd(git_buf *buf, git_file fd, size_t len)
+{
+	ssize_t read_size;
+
+	git_buf_clear(buf);
+
+	if (git_buf_grow(buf, len + 1) < 0)
+		return -1;
+
+	/* p_read loops internally to read len bytes */
+	read_size = p_read(fd, buf->ptr, len);
+
+	if (read_size != (ssize_t)len) {
+		giterr_set(GITERR_OS, "Failed to read descriptor");
+		return -1;
+	}
+
+	buf->ptr[read_size] = '\0';
+	buf->size = read_size;
+
+	return 0;
+}
+
+int git_futils_readbuffer_updated(
+	git_buf *buf, const char *path, time_t *mtime, size_t *size, int *updated)
 {
 	git_file fd;
-	size_t len;
 	struct stat st;
+	bool changed = false;
 
 	assert(buf && path && *path);
 
@@ -136,39 +164,29 @@ int git_futils_readbuffer_updated(git_buf *buf, const char *path, time_t *mtime,
 	}
 
 	/*
-	 * If we were given a time, we only want to read the file if it
-	 * has been modified.
+	 * If we were given a time and/or a size, we only want to read the file
+	 * if it has been modified.
 	 */
-	if (mtime != NULL && *mtime >= st.st_mtime) {
+	if (size && *size != (size_t)st.st_size)
+		changed = true;
+	if (mtime && *mtime != st.st_mtime)
+		changed = true;
+	if (!size && !mtime)
+		changed = true;
+
+	if (!changed) {
 		p_close(fd);
 		return 0;
 	}
 
 	if (mtime != NULL)
 		*mtime = st.st_mtime;
+	if (size != NULL)
+		*size = (size_t)st.st_size;
 
-	len = (size_t) st.st_size;
-
-	git_buf_clear(buf);
-
-	if (git_buf_grow(buf, len + 1) < 0) {
+	if (git_futils_readbuffer_fd(buf, fd, (size_t)st.st_size) < 0) {
 		p_close(fd);
 		return -1;
-	}
-
-	buf->ptr[len] = '\0';
-
-	while (len > 0) {
-		ssize_t read_size = p_read(fd, buf->ptr, len);
-
-		if (read_size < 0) {
-			p_close(fd);
-			giterr_set(GITERR_OS, "Failed to read descriptor for '%s'", path);
-			return -1;
-		}
-
-		len -= read_size;
-		buf->size += read_size;
 	}
 
 	p_close(fd);
@@ -181,7 +199,7 @@ int git_futils_readbuffer_updated(git_buf *buf, const char *path, time_t *mtime,
 
 int git_futils_readbuffer(git_buf *buf, const char *path)
 {
-	return git_futils_readbuffer_updated(buf, path, NULL, NULL);
+	return git_futils_readbuffer_updated(buf, path, NULL, NULL, NULL);
 }
 
 int git_futils_mv_withpath(const char *from, const char *to, const mode_t dirmode)
@@ -233,6 +251,7 @@ int git_futils_mkdir(
 	mode_t mode,
 	uint32_t flags)
 {
+	int error = -1;
 	git_buf make_path = GIT_BUF_INIT;
 	ssize_t root = 0;
 	char lastch, *tail;
@@ -280,12 +299,28 @@ int git_futils_mkdir(
 		*tail = '\0';
 
 		/* make directory */
-		if (p_mkdir(make_path.ptr, mode) < 0 &&
-			(errno != EEXIST || (flags & GIT_MKDIR_EXCL) != 0))
-		{
-			giterr_set(GITERR_OS, "Failed to make directory '%s'",
-				make_path.ptr);
-			goto fail;
+		if (p_mkdir(make_path.ptr, mode) < 0) {
+			if (errno == EEXIST) {
+				if (!lastch && (flags & GIT_MKDIR_VERIFY_DIR) != 0) {
+					if (!git_path_isdir(make_path.ptr)) {
+						giterr_set(
+							GITERR_OS, "Existing path is not a directory '%s'",
+							make_path.ptr);
+						error = GIT_ENOTFOUND;
+						goto fail;
+					}
+				}
+				if ((flags & GIT_MKDIR_EXCL) != 0) {
+					giterr_set(GITERR_OS, "Directory already exists '%s'",
+						make_path.ptr);
+					error = GIT_EEXISTS;
+					goto fail;
+				}
+			} else {
+				giterr_set(GITERR_OS, "Failed to make directory '%s'",
+					make_path.ptr);
+				goto fail;
+			}
 		}
 
 		/* chmod if requested */
@@ -307,7 +342,7 @@ int git_futils_mkdir(
 
 fail:
 	git_buf_free(&make_path);
-	return -1;
+	return error;
 }
 
 int git_futils_mkdir_r(const char *path, const char *base, const mode_t mode)
@@ -315,166 +350,213 @@ int git_futils_mkdir_r(const char *path, const char *base, const mode_t mode)
 	return git_futils_mkdir(path, base, mode, GIT_MKDIR_PATH);
 }
 
-static int _rmdir_recurs_foreach(void *opaque, git_buf *path)
+typedef struct {
+	const char *base;
+	uint32_t flags;
+	int error;
+} futils__rmdir_data;
+
+static int futils__error_cannot_rmdir(const char *path, const char *filemsg)
 {
-	git_directory_removal_type removal_type = *(git_directory_removal_type *)opaque;
+	if (filemsg)
+		giterr_set(GITERR_OS, "Could not remove directory. File '%s' %s",
+				   path, filemsg);
+	else
+		giterr_set(GITERR_OS, "Could not remove directory '%s'", path);
 
-	assert(removal_type == GIT_DIRREMOVAL_EMPTY_HIERARCHY
-		|| removal_type == GIT_DIRREMOVAL_FILES_AND_DIRS
-		|| removal_type == GIT_DIRREMOVAL_ONLY_EMPTY_DIRS);
-
-	if (git_path_isdir(path->ptr) == true) {
-		if (git_path_direach(path, _rmdir_recurs_foreach, opaque) < 0)
-			return -1;
-
-		if (p_rmdir(path->ptr) < 0) {
-			if (removal_type == GIT_DIRREMOVAL_ONLY_EMPTY_DIRS && (errno == ENOTEMPTY || errno == EEXIST))
-				return 0;
-
-			giterr_set(GITERR_OS, "Could not remove directory '%s'", path->ptr);
-			return -1;
-		}
-
-		return 0;
-	}
-
-	if (removal_type == GIT_DIRREMOVAL_FILES_AND_DIRS) {
-		if (p_unlink(path->ptr) < 0) {
-			giterr_set(GITERR_OS, "Could not remove directory.  File '%s' cannot be removed", path->ptr);
-			return -1;
-		}
-
-		return 0;
-	}
-
-	if (removal_type == GIT_DIRREMOVAL_EMPTY_HIERARCHY) {
-		giterr_set(GITERR_OS, "Could not remove directory. File '%s' still present", path->ptr);
-		return -1;
-	}
-
-	return 0;
+	return -1;
 }
 
-int git_futils_rmdir_r(const char *path, git_directory_removal_type removal_type)
+static int futils__rm_first_parent(git_buf *path, const char *ceiling)
 {
-	int error;
-	git_buf p = GIT_BUF_INIT;
+	int error = GIT_ENOTFOUND;
+	struct stat st;
 
-	error = git_buf_sets(&p, path);
-	if (!error)
-		error = _rmdir_recurs_foreach(&removal_type, &p);
-	git_buf_free(&p);
+	while (error == GIT_ENOTFOUND) {
+		git_buf_rtruncate_at_char(path, '/');
+
+		if (!path->size || git__prefixcmp(path->ptr, ceiling) != 0)
+			error = 0;
+		else if (p_lstat_posixly(path->ptr, &st) == 0) {
+			if (S_ISREG(st.st_mode) || S_ISLNK(st.st_mode))
+				error = p_unlink(path->ptr);
+			else if (!S_ISDIR(st.st_mode))
+				error = -1; /* fail to remove non-regular file */
+		} else if (errno != ENOTDIR)
+			error = -1;
+	}
+
+	if (error)
+		futils__error_cannot_rmdir(path->ptr, "cannot remove parent");
+
 	return error;
 }
 
-#ifdef GIT_WIN32
-struct win32_path {
-	wchar_t path[MAX_PATH];
-	DWORD len;
-};
-
-static int win32_expand_path(struct win32_path *s_root, const wchar_t *templ)
+static int futils__rmdir_recurs_foreach(void *opaque, git_buf *path)
 {
-	s_root->len = ExpandEnvironmentStringsW(templ, s_root->path, MAX_PATH);
-	return s_root->len ? 0 : -1;
-}
+	struct stat st;
+	futils__rmdir_data *data = opaque;
 
-static int win32_find_file(git_buf *path, const struct win32_path *root, const char *filename)
-{
-	size_t len, alloc_len;
-	wchar_t *file_utf16 = NULL;
-	char file_utf8[GIT_PATH_MAX];
-
-	if (!root || !filename || (len = strlen(filename)) == 0)
-		return GIT_ENOTFOUND;
-
-	/* allocate space for wchar_t path to file */
-	alloc_len = root->len + len + 2;
-	file_utf16 = git__calloc(alloc_len, sizeof(wchar_t));
-	GITERR_CHECK_ALLOC(file_utf16);
-
-	/* append root + '\\' + filename as wchar_t */
-	memcpy(file_utf16, root->path, root->len * sizeof(wchar_t));
-
-	if (*filename == '/' || *filename == '\\')
-		filename++;
-
-	git__utf8_to_16(file_utf16 + root->len - 1, alloc_len, filename);
-
-	/* check access */
-	if (_waccess(file_utf16, F_OK) < 0) {
-		git__free(file_utf16);
-		return GIT_ENOTFOUND;
+	if ((data->error = p_lstat_posixly(path->ptr, &st)) < 0) {
+		if (errno == ENOENT)
+			data->error = 0;
+		else if (errno == ENOTDIR) {
+			/* asked to remove a/b/c/d/e and a/b is a normal file */
+			if ((data->flags & GIT_RMDIR_REMOVE_BLOCKERS) != 0)
+				data->error = futils__rm_first_parent(path, data->base);
+			else
+				futils__error_cannot_rmdir(
+					path->ptr, "parent is not directory");
+		}
+		else
+			futils__error_cannot_rmdir(path->ptr, "cannot access");
 	}
 
-	git__utf16_to_8(file_utf8, file_utf16);
-	git_path_mkposix(file_utf8);
-	git_buf_sets(path, file_utf8);
+	else if (S_ISDIR(st.st_mode)) {
+		int error = git_path_direach(path, futils__rmdir_recurs_foreach, data);
+		if (error < 0)
+			return (error == GIT_EUSER) ? data->error : error;
 
-	git__free(file_utf16);
-	return 0;
+		data->error = p_rmdir(path->ptr);
+
+		if (data->error < 0) {
+			if ((data->flags & GIT_RMDIR_SKIP_NONEMPTY) != 0 &&
+				(errno == ENOTEMPTY || errno == EEXIST))
+				data->error = 0;
+			else
+				futils__error_cannot_rmdir(path->ptr, NULL);
+		}
+	}
+
+	else if ((data->flags & GIT_RMDIR_REMOVE_FILES) != 0) {
+		data->error = p_unlink(path->ptr);
+
+		if (data->error < 0)
+			futils__error_cannot_rmdir(path->ptr, "cannot be removed");
+	}
+
+	else if ((data->flags & GIT_RMDIR_SKIP_NONEMPTY) == 0)
+		data->error = futils__error_cannot_rmdir(path->ptr, "still present");
+
+	return data->error;
 }
-#endif
+
+static int futils__rmdir_empty_parent(void *opaque, git_buf *path)
+{
+	int error = p_rmdir(path->ptr);
+
+	GIT_UNUSED(opaque);
+
+	if (error) {
+		int en = errno;
+
+		if (en == ENOENT || en == ENOTDIR) {
+			giterr_clear();
+			error = 0;
+		} else if (en == ENOTEMPTY || en == EEXIST) {
+			giterr_clear();
+			error = GIT_ITEROVER;
+		} else {
+			futils__error_cannot_rmdir(path->ptr, NULL);
+		}
+	}
+
+	return error;
+}
+
+int git_futils_rmdir_r(
+	const char *path, const char *base, uint32_t flags)
+{
+	int error;
+	git_buf fullpath = GIT_BUF_INIT;
+	futils__rmdir_data data;
+
+	/* build path and find "root" where we should start calling mkdir */
+	if (git_path_join_unrooted(&fullpath, path, base, NULL) < 0)
+		return -1;
+
+	data.base  = base ? base : "";
+	data.flags = flags;
+	data.error = 0;
+
+	error = futils__rmdir_recurs_foreach(&data, &fullpath);
+
+	/* remove now-empty parents if requested */
+	if (!error && (flags & GIT_RMDIR_EMPTY_PARENTS) != 0) {
+		error = git_path_walk_up(
+			&fullpath, base, futils__rmdir_empty_parent, &data);
+
+		if (error == GIT_ITEROVER)
+			error = 0;
+	}
+
+	git_buf_free(&fullpath);
+
+	return error;
+}
 
 int git_futils_find_system_file(git_buf *path, const char *filename)
 {
 #ifdef GIT_WIN32
-	struct win32_path root;
+	// try to find git.exe/git.cmd on path
+	if (!win32_find_system_file_using_path(path, filename))
+		return 0;
 
-	if (win32_expand_path(&root, L"%PROGRAMFILES%\\Git\\etc\\") < 0 ||
-		root.path[0] == L'%') /* i.e. no expansion happened */
-	{
-		giterr_set(GITERR_OS, "Cannot locate the system's Program Files directory");
-		return -1;
-	}
-
-	if (win32_find_file(path, &root, filename) < 0) {
-		giterr_set(GITERR_OS, "The system file '%s' doesn't exist", filename);
-		git_buf_clear(path);
-		return GIT_ENOTFOUND;
-	}
-
-	return 0;
-
+	// try to find msysgit installation path using registry
+	if (!win32_find_system_file_using_registry(path, filename))
+		return 0;
 #else
 	if (git_buf_joinpath(path, "/etc", filename) < 0)
 		return -1;
 
 	if (git_path_exists(path->ptr) == true)
 		return 0;
+#endif
 
 	git_buf_clear(path);
 	giterr_set(GITERR_OS, "The system file '%s' doesn't exist", filename);
 	return GIT_ENOTFOUND;
-#endif
 }
 
 int git_futils_find_global_file(git_buf *path, const char *filename)
 {
 #ifdef GIT_WIN32
 	struct win32_path root;
+	static const wchar_t *tmpls[4] = {
+		L"%HOME%\\",
+		L"%HOMEDRIVE%%HOMEPATH%\\",
+		L"%USERPROFILE%\\",
+		NULL,
+	};
+	const wchar_t **tmpl;
 
-	if (win32_expand_path(&root, L"%USERPROFILE%\\") < 0 ||
-		root.path[0] == L'%') /* i.e. no expansion happened */
-	{
-		giterr_set(GITERR_OS, "Cannot locate the user's profile directory");
-		return -1;
+	for (tmpl = tmpls; *tmpl != NULL; tmpl++) {
+		/* try to expand environment variable, skipping if not set */
+		if (win32_expand_path(&root, *tmpl) != 0 || root.path[0] == L'%')
+			continue;
+
+		/* try to look up file under path */
+		if (!win32_find_file(path, &root, filename))
+			return 0;
+
+		/* No error if file not found under %HOME%, b/c we don't trust it,
+		 * but do error if another var is set and yet file is not found.
+		 */
+		if (tmpl != tmpls)
+			break;
 	}
 
-	if (win32_find_file(path, &root, filename) < 0) {
-		giterr_set(GITERR_OS, "The global file '%s' doesn't exist", filename);
-		git_buf_clear(path);
-		return GIT_ENOTFOUND;
-	}
+	giterr_set(GITERR_OS, "The global file '%s' doesn't exist", filename);
+	git_buf_clear(path);
 
-	return 0;
+	return GIT_ENOTFOUND;
 #else
 	const char *home = getenv("HOME");
 
 	if (home == NULL) {
 		giterr_set(GITERR_OS, "Global file lookup failed. "
 			"Cannot locate the user's home directory");
-		return -1;
+		return GIT_ENOTFOUND;
 	}
 
 	if (git_buf_joinpath(path, home, filename) < 0)
@@ -693,4 +775,39 @@ int git_futils_cp_r(
 	git_buf_free(&info.to);
 
 	return error;
+}
+
+int git_futils_filestamp_check(
+	git_futils_filestamp *stamp, const char *path)
+{
+	struct stat st;
+
+	/* if the stamp is NULL, then always reload */
+	if (stamp == NULL)
+		return 1;
+
+	if (p_stat(path, &st) < 0)
+		return GIT_ENOTFOUND;
+
+	if (stamp->mtime == (git_time_t)st.st_mtime &&
+		stamp->size  == (git_off_t)st.st_size   &&
+		stamp->ino   == (unsigned int)st.st_ino)
+		return 0;
+
+	stamp->mtime = (git_time_t)st.st_mtime;
+	stamp->size  = (git_off_t)st.st_size;
+	stamp->ino   = (unsigned int)st.st_ino;
+
+	return 1;
+}
+
+void git_futils_filestamp_set(
+	git_futils_filestamp *target, const git_futils_filestamp *source)
+{
+	assert(target);
+
+	if (source)
+		memcpy(target, source, sizeof(*target));
+	else
+		memset(target, 0, sizeof(*target));
 }

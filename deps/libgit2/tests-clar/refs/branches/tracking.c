@@ -14,8 +14,10 @@ void test_refs_branches_tracking__initialize(void)
 void test_refs_branches_tracking__cleanup(void)
 {
 	git_reference_free(branch);
+	branch = NULL;
 
 	git_repository_free(repo);
+	repo = NULL;
 }
 
 void test_refs_branches_tracking__can_retrieve_the_remote_tracking_reference_of_a_local_branch(void)
@@ -62,6 +64,17 @@ void test_refs_branches_tracking__trying_to_retrieve_a_remote_tracking_reference
 	git_reference *branch, *tracking;
 
 	cl_git_pass(git_reference_lookup(&branch, repo, "refs/heads/subtrees"));
+
+	cl_assert_equal_i(GIT_ENOTFOUND, git_branch_tracking(&tracking, branch));
+
+	git_reference_free(branch);
+}
+
+void test_refs_branches_tracking__trying_to_retrieve_a_remote_tracking_reference_from_a_branch_with_no_fetchspec_returns_GIT_ENOTFOUND(void)
+{
+	git_reference *branch, *tracking;
+
+	cl_git_pass(git_reference_lookup(&branch, repo, "refs/heads/cannot-fetch"));
 
 	cl_assert_equal_i(GIT_ENOTFOUND, git_branch_tracking(&tracking, branch));
 
