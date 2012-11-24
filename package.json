@@ -47,7 +47,7 @@
     "example": "examples"
   },
   "scripts": {
-    "preinstall": "mkdir deps/libgit2/build && cd deps/libgit2/build && cmake -D CMAKE_BUILD_TYPE=Release -D BUILD_SHARED_LIBS=false .. && cmake --build . && cd ../../.. && node-gyp rebuild",
+    "preinstall": "mkdir deps/libgit2/build && cd deps/libgit2/build && cmake -D CMAKE_BUILD_TYPE=Release -D BUILD_SHARED_LIBS=false -D BUILD_CLAR=false .. && cmake --build . && cd ../../.. && node-gyp rebuild",
     "test": "mocha"
   }
 }
