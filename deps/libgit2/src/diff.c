@@ -285,7 +285,7 @@ static git_diff_list *git_diff_list_alloc(
 		goto fail;
 
 	if (diff->opts.flags & GIT_DIFF_REVERSE) {
-		char *swap = diff->opts.old_prefix;
+		const char *swap = diff->opts.old_prefix;
 		diff->opts.old_prefix = diff->opts.new_prefix;
 		diff->opts.new_prefix = swap;
 	}
@@ -363,7 +363,7 @@ int git_diff__oid_for_file(
 		const git_oid *sm_oid;
 
 		if (!git_submodule_lookup(&sm, repo, path) &&
-			(sm_oid = git_submodule_wd_oid(sm)) != NULL)
+			(sm_oid = git_submodule_wd_id(sm)) != NULL)
 			git_oid_cpy(oid, sm_oid);
 		else {
 			/* if submodule lookup failed probably just in an intermediate
@@ -496,7 +496,7 @@ static int maybe_modified(
 
 				/* grab OID while we are here */
 				if (git_oid_iszero(&nitem->oid)) {
-					const git_oid *sm_oid = git_submodule_wd_oid(sub);
+					const git_oid *sm_oid = git_submodule_wd_id(sub);
 					if (sm_oid != NULL) {
 						git_oid_cpy(&noid, sm_oid);
 						use_noid = &noid;
@@ -570,7 +570,7 @@ static int diff_list_init_from_iterators(
 	return 0;
 }
 
-static int diff_from_iterators(
+int git_diff__from_iterators(
 	git_diff_list **diff_ptr,
 	git_repository *repo,
 	git_iterator *old_iter,
@@ -589,18 +589,13 @@ static int diff_from_iterators(
 		goto fail;
 
 	if (diff->opts.flags & GIT_DIFF_DELTAS_ARE_ICASE) {
-		/* If one of the iterators doesn't have ignore_case set,
-		 * then that's unfortunate because we'll have to spool
-		 * its data, sort it icase, and then use that for our
-		 * merge join to the other iterator that is icase sorted */
-		if (!old_iter->ignore_case &&
-			git_iterator_spoolandsort(
-				&old_iter, old_iter, diff->entrycomp, true) < 0)
-			goto fail;
-
-		if (!new_iter->ignore_case &&
-			git_iterator_spoolandsort(
-				&new_iter, new_iter, diff->entrycomp, true) < 0)
+		/* If either iterator does not have ignore_case set, then we will
+		 * spool its data, sort it icase, and use that for the merge join
+		 * with the other iterator which was icase sorted.  This call is
+		 * a no-op on an iterator that already matches "ignore_case".
+		 */
+		if (git_iterator_spoolandsort_push(old_iter, true) < 0 ||
+			git_iterator_spoolandsort_push(new_iter, true) < 0)
 			goto fail;
 	}
 
@@ -610,9 +605,10 @@ static int diff_from_iterators(
 
 	/* run iterators building diffs */
 	while (oitem || nitem) {
+		int cmp = oitem ? (nitem ? diff->entrycomp(oitem, nitem) : -1) : 1;
 
 		/* create DELETED records for old items not matched in new */
-		if (oitem && (!nitem || diff->entrycomp(oitem, nitem) < 0)) {
+		if (cmp < 0) {
 			if (diff_delta__from_one(diff, GIT_DELTA_DELETED, oitem) < 0)
 				goto fail;
 
@@ -637,7 +633,7 @@ static int diff_from_iterators(
 		/* create ADDED, TRACKED, or IGNORED records for new items not
 		 * matched in old (and/or descend into directories as needed)
 		 */
-		else if (nitem && (!oitem || diff->entrycomp(oitem, nitem) > 0)) {
+		else if (cmp > 0) {
 			git_delta_t delta_type = GIT_DELTA_UNTRACKED;
 
 			/* check if contained in ignored parent directory */
@@ -733,7 +729,7 @@ static int diff_from_iterators(
 		 * (or ADDED and DELETED pair if type changed)
 		 */
 		else {
-			assert(oitem && nitem && diff->entrycomp(oitem, nitem) == 0);
+			assert(oitem && nitem && cmp == 0);
 
 			if (maybe_modified(old_iter, oitem, new_iter, nitem, diff) < 0 ||
 				git_iterator_advance(old_iter, &oitem) < 0 ||
@@ -755,14 +751,14 @@ fail:
 	return error;
 }
 
-
 #define DIFF_FROM_ITERATORS(MAKE_FIRST, MAKE_SECOND) do { \
 	git_iterator *a = NULL, *b = NULL; \
 	char *pfx = opts ? git_pathspec_prefix(&opts->pathspec) : NULL; \
+	GITERR_CHECK_VERSION(opts, GIT_DIFF_OPTIONS_VERSION, "git_diff_options"); \
     if (!(error = MAKE_FIRST) && !(error = MAKE_SECOND)) \
-		error = diff_from_iterators(diff, repo, a, b, opts); \
+		error = git_diff__from_iterators(diff, repo, a, b, opts); \
 	git__free(pfx); git_iterator_free(a); git_iterator_free(b); \
-    } while (0)
+} while (0)
 
 int git_diff_tree_to_tree(
 	git_diff_list **diff,
@@ -776,14 +772,14 @@ int git_diff_tree_to_tree(
 	assert(diff && repo);
 
 	DIFF_FROM_ITERATORS(
-		git_iterator_for_tree_range(&a, repo, old_tree, pfx, pfx),
-		git_iterator_for_tree_range(&b, repo, new_tree, pfx, pfx)
+		git_iterator_for_tree_range(&a, old_tree, pfx, pfx),
+		git_iterator_for_tree_range(&b, new_tree, pfx, pfx)
 	);
 
 	return error;
 }
 
-int git_diff_index_to_tree(
+int git_diff_tree_to_index(
 	git_diff_list **diff,
 	git_repository *repo,
 	git_tree *old_tree,
@@ -798,14 +794,14 @@ int git_diff_index_to_tree(
 		return error;
 
 	DIFF_FROM_ITERATORS(
-		git_iterator_for_tree_range(&a, repo, old_tree, pfx, pfx),
+		git_iterator_for_tree_range(&a, old_tree, pfx, pfx),
 	    git_iterator_for_index_range(&b, index, pfx, pfx)
 	);
 
 	return error;
 }
 
-int git_diff_workdir_to_index(
+int git_diff_index_to_workdir(
 	git_diff_list **diff,
 	git_repository *repo,
 	git_index *index,
@@ -827,7 +823,7 @@ int git_diff_workdir_to_index(
 }
 
 
-int git_diff_workdir_to_tree(
+int git_diff_tree_to_workdir(
 	git_diff_list **diff,
 	git_repository *repo,
 	git_tree *old_tree,
@@ -838,7 +834,7 @@ int git_diff_workdir_to_tree(
 	assert(diff && repo);
 
 	DIFF_FROM_ITERATORS(
-		git_iterator_for_tree_range(&a, repo, old_tree, pfx, pfx),
+		git_iterator_for_tree_range(&a, old_tree, pfx, pfx),
 	    git_iterator_for_workdir_range(&b, repo, pfx, pfx)
 	);
 

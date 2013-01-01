@@ -64,7 +64,7 @@ void test_network_remoterename__renaming_a_remote_without_a_fetchrefspec_doesnt_
 
 	git_remote_free(_remote);
 	cl_git_pass(git_repository_config__weakptr(&config, _repo));
-	cl_git_pass(git_config_delete(config, "remote.test.fetch"));
+	cl_git_pass(git_config_delete_entry(config, "remote.test.fetch"));
 
 	cl_git_pass(git_remote_load(&_remote, _repo, "test"));
 
@@ -121,7 +121,9 @@ void test_network_remoterename__new_name_can_contain_dots(void)
 
 void test_network_remoterename__new_name_must_conform_to_reference_naming_conventions(void)
 {
-	cl_git_fail(git_remote_rename(_remote, "new@{name", dont_call_me_cb, NULL));
+	cl_assert_equal_i(
+		GIT_EINVALIDSPEC,
+		git_remote_rename(_remote, "new@{name", dont_call_me_cb, NULL));
 }
 
 void test_network_remoterename__renamed_name_is_persisted(void)

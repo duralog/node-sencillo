@@ -180,9 +180,6 @@ void test_status_ignore__subdirectories(void)
 {
 	status_entry_single st;
 	int ignored;
-	git_status_options opts;
-
-	GIT_UNUSED(opts);
 
 	g_repo = cl_git_sandbox_init("empty_standard_repo");
 
@@ -215,11 +212,6 @@ void test_status_ignore__subdirectories(void)
 		git_futils_mkdir_r("empty_standard_repo/test/ignore_me", NULL, 0775));
 	cl_git_mkfile(
 		"empty_standard_repo/test/ignore_me/file", "I'm going to be ignored!");
-
-	opts.show = GIT_STATUS_SHOW_INDEX_AND_WORKDIR;
-	opts.flags = GIT_STATUS_OPT_INCLUDE_IGNORED |
-		GIT_STATUS_OPT_INCLUDE_UNTRACKED |
-		GIT_STATUS_OPT_RECURSE_UNTRACKED_DIRS;
 
 	memset(&st, 0, sizeof(st));
 	cl_git_pass(git_status_foreach(g_repo, cb_status__single, &st));
@@ -339,5 +331,43 @@ void test_status_ignore__internal_ignores_inside_deep_paths(void)
 	cl_git_pass(git_status_should_ignore(&ignored, g_repo, "this/is/deepish"));
 	cl_assert(!ignored);
 	cl_git_pass(git_status_should_ignore(&ignored, g_repo, "xthis/is/deep"));
+	cl_assert(!ignored);
+}
+
+void test_status_ignore__automatically_ignore_bad_files(void)
+{
+	int ignored;
+
+	g_repo = cl_git_sandbox_init("empty_standard_repo");
+
+	cl_git_pass(git_status_should_ignore(&ignored, g_repo, ".git"));
+	cl_assert(ignored);
+	cl_git_pass(git_status_should_ignore(&ignored, g_repo, "this/file/."));
+	cl_assert(ignored);
+	cl_git_pass(git_status_should_ignore(&ignored, g_repo, "path/../funky"));
+	cl_assert(ignored);
+	cl_git_pass(git_status_should_ignore(&ignored, g_repo, "path/whatever.c"));
+	cl_assert(!ignored);
+
+	cl_git_pass(git_ignore_add_rule(g_repo, "*.c\n"));
+
+	cl_git_pass(git_status_should_ignore(&ignored, g_repo, ".git"));
+	cl_assert(ignored);
+	cl_git_pass(git_status_should_ignore(&ignored, g_repo, "this/file/."));
+	cl_assert(ignored);
+	cl_git_pass(git_status_should_ignore(&ignored, g_repo, "path/../funky"));
+	cl_assert(ignored);
+	cl_git_pass(git_status_should_ignore(&ignored, g_repo, "path/whatever.c"));
+	cl_assert(ignored);
+
+	cl_git_pass(git_ignore_clear_internal_rules(g_repo));
+
+	cl_git_pass(git_status_should_ignore(&ignored, g_repo, ".git"));
+	cl_assert(ignored);
+	cl_git_pass(git_status_should_ignore(&ignored, g_repo, "this/file/."));
+	cl_assert(ignored);
+	cl_git_pass(git_status_should_ignore(&ignored, g_repo, "path/../funky"));
+	cl_assert(ignored);
+	cl_git_pass(git_status_should_ignore(&ignored, g_repo, "path/whatever.c"));
 	cl_assert(!ignored);
 }

@@ -277,6 +277,56 @@ int git_packfile_unpack_header(
 	return 0;
 }
 
+int git_packfile_resolve_header(
+		size_t *size_p,
+		git_otype *type_p,
+		struct git_pack_file *p,
+		git_off_t offset)
+{
+	git_mwindow *w_curs = NULL;
+	git_off_t curpos = offset;
+	size_t size;
+	git_otype type;
+	git_off_t base_offset;
+	int error;
+
+	error = git_packfile_unpack_header(&size, &type, &p->mwf, &w_curs, &curpos);
+	git_mwindow_close(&w_curs);
+	if (error < 0)
+		return error;
+
+	if (type == GIT_OBJ_OFS_DELTA || type == GIT_OBJ_REF_DELTA) {
+		size_t base_size;
+		git_rawobj delta;
+		base_offset = get_delta_base(p, &w_curs, &curpos, type, offset);
+		git_mwindow_close(&w_curs);
+		error = packfile_unpack_compressed(&delta, p, &w_curs, &curpos, size, type);
+		git_mwindow_close(&w_curs);
+		if (error < 0)
+			return error;
+		error = git__delta_read_header(delta.data, delta.len, &base_size, size_p);
+		git__free(delta.data);
+		if (error < 0)
+			return error;
+	} else
+		*size_p = size;
+
+	while (type == GIT_OBJ_OFS_DELTA || type == GIT_OBJ_REF_DELTA) {
+		curpos = base_offset;
+		error = git_packfile_unpack_header(&size, &type, &p->mwf, &w_curs, &curpos);
+		git_mwindow_close(&w_curs);
+		if (error < 0)
+			return error;
+		if (type != GIT_OBJ_OFS_DELTA && type != GIT_OBJ_REF_DELTA)
+			break;
+		base_offset = get_delta_base(p, &w_curs, &curpos, type, base_offset);
+		git_mwindow_close(&w_curs);
+	}
+	*type_p = type;
+
+	return error;
+}
+
 static int packfile_unpack_delta(
 		git_rawobj *obj,
 		struct git_pack_file *p,
@@ -389,6 +439,72 @@ static void use_git_free(void *opaq, void *ptr)
 {
 	GIT_UNUSED(opaq);
 	git__free(ptr);
+}
+
+int git_packfile_stream_open(git_packfile_stream *obj, struct git_pack_file *p, git_off_t curpos)
+{
+	int st;
+
+	memset(obj, 0, sizeof(git_packfile_stream));
+	obj->curpos = curpos;
+	obj->p = p;
+	obj->zstream.zalloc = use_git_alloc;
+	obj->zstream.zfree = use_git_free;
+	obj->zstream.next_in = Z_NULL;
+	obj->zstream.next_out = Z_NULL;
+	st = inflateInit(&obj->zstream);
+	if (st != Z_OK) {
+		git__free(obj);
+		giterr_set(GITERR_ZLIB, "Failed to inflate packfile");
+		return -1;
+	}
+
+	return 0;
+}
+
+ssize_t git_packfile_stream_read(git_packfile_stream *obj, void *buffer, size_t len)
+{
+	unsigned char *in;
+	size_t written;
+	int st;
+
+	if (obj->done)
+		return 0;
+
+	in = pack_window_open(obj->p, &obj->mw, obj->curpos, &obj->zstream.avail_in);
+	if (in == NULL)
+		return GIT_EBUFS;
+
+	obj->zstream.next_out = buffer;
+	obj->zstream.avail_out = len;
+	obj->zstream.next_in = in;
+
+	st = inflate(&obj->zstream, Z_SYNC_FLUSH);
+	git_mwindow_close(&obj->mw);
+
+	obj->curpos += obj->zstream.next_in - in;
+	written = len - obj->zstream.avail_out;
+
+	if (st != Z_OK && st != Z_STREAM_END) {
+		giterr_set(GITERR_ZLIB, "Failed to inflate packfile");
+		return -1;
+	}
+
+	if (st == Z_STREAM_END)
+		obj->done = 1;
+
+
+	/* If we didn't write anything out but we're not done, we need more data */
+	if (!written && st != Z_STREAM_END)
+		return GIT_EBUFS;
+
+	return written;
+
+}
+
+void git_packfile_stream_free(git_packfile_stream *obj)
+{
+	inflateEnd(&obj->zstream);
 }
 
 int packfile_unpack_compressed(
@@ -564,8 +680,10 @@ static int packfile_open(struct git_pack_file *p)
 
 	/* TODO: open with noatime */
 	p->mwf.fd = git_futils_open_ro(p->pack_name);
-	if (p->mwf.fd < 0)
-		return p->mwf.fd;
+	if (p->mwf.fd < 0) {
+		p->mwf.fd = -1;
+		return -1;
+	}
 
 	if (p_fstat(p->mwf.fd, &st) < 0 ||
 		git_mwindow_file_register(&p->mwf) < 0)
@@ -696,7 +814,7 @@ static int git__memcmp4(const void *a, const void *b) {
 
 int git_pack_foreach_entry(
 	struct git_pack_file *p,
-	int (*cb)(git_oid *oid, void *data),
+	git_odb_foreach_cb cb,
 	void *data)
 {
 	const unsigned char *index = p->index_map.data, *current;

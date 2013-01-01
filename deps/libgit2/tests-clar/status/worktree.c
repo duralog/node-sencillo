@@ -111,7 +111,7 @@ void test_status_worktree__swap_subdir_and_file(void)
 	status_entry_counts counts;
 	git_repository *repo = cl_git_sandbox_init("status");
 	git_index *index;
-	git_status_options opts;
+	git_status_options opts = GIT_STATUS_OPTIONS_INIT;
 	bool ignore_case;
 
 	cl_git_pass(git_repository_index(&index, repo));
@@ -133,7 +133,6 @@ void test_status_worktree__swap_subdir_and_file(void)
 	counts.expected_paths = ignore_case ? entry_paths3_icase : entry_paths3;
 	counts.expected_statuses = ignore_case ? entry_statuses3_icase : entry_statuses3;
 
-	memset(&opts, 0, sizeof(opts));
 	opts.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED |
 		GIT_STATUS_OPT_INCLUDE_IGNORED;
 
@@ -150,7 +149,7 @@ void test_status_worktree__swap_subdir_with_recurse_and_pathspec(void)
 {
 	status_entry_counts counts;
 	git_repository *repo = cl_git_sandbox_init("status");
-	git_status_options opts;
+	git_status_options opts = GIT_STATUS_OPTIONS_INIT;
 
 	/* first alter the contents of the worktree */
 	cl_git_pass(p_rename("status/current_file", "status/swap"));
@@ -167,7 +166,6 @@ void test_status_worktree__swap_subdir_with_recurse_and_pathspec(void)
 	counts.expected_paths = entry_paths4;
 	counts.expected_statuses = entry_statuses4;
 
-	memset(&opts, 0, sizeof(opts));
 	opts.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED |
 		GIT_STATUS_OPT_RECURSE_UNTRACKED_DIRS;
 	/* TODO: set pathspec to "current_file" eventually */
@@ -464,7 +462,7 @@ void test_status_worktree__status_file_without_index_or_workdir(void)
 	cl_git_pass(git_repository_set_workdir(repo, "wd", false));
 
 	cl_git_pass(git_index_open(&index, "empty-index"));
-	cl_assert_equal_i(0, git_index_entrycount(index));
+	cl_assert_equal_i(0, (int)git_index_entrycount(index));
 	git_repository_set_index(repo, index);
 
 	cl_git_pass(git_status_file(&status, repo, "branch_file.txt"));
@@ -482,7 +480,7 @@ static void fill_index_wth_head_entries(git_repository *repo, git_index *index)
 	git_commit *commit;
 	git_tree *tree;
 
-	cl_git_pass(git_reference_name_to_oid(&oid, repo, "HEAD"));
+	cl_git_pass(git_reference_name_to_id(&oid, repo, "HEAD"));
 	cl_git_pass(git_commit_lookup(&commit, repo, &oid));
 	cl_git_pass(git_commit_tree(&tree, commit));
 
@@ -691,7 +689,7 @@ void test_status_worktree__filemode_changes(void)
 {
 	git_repository *repo = cl_git_sandbox_init("filemodes");
 	status_entry_counts counts;
-	git_status_options opts;
+	git_status_options opts = GIT_STATUS_OPTIONS_INIT;
 	git_config *cfg;
 
 	/* overwrite stored filemode with platform appropriate value */
@@ -708,7 +706,6 @@ void test_status_worktree__filemode_changes(void)
 				filemode_statuses[i] = GIT_STATUS_CURRENT;
 	}
 
-	memset(&opts, 0, sizeof(opts));
 	opts.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED |
 		GIT_STATUS_OPT_INCLUDE_IGNORED |
 		GIT_STATUS_OPT_INCLUDE_UNMODIFIED;
@@ -746,7 +743,7 @@ static int cb_status__expected_path(const char *p, unsigned int s, void *payload
 void test_status_worktree__disable_pathspec_match(void)
 {
 	git_repository *repo;
-	git_status_options opts;
+	git_status_options opts = GIT_STATUS_OPTIONS_INIT;
 	char *file_with_bracket = "LICENSE[1].md", 
 		*imaginary_file_with_bracket = "LICENSE[1-2].md";
 
@@ -754,7 +751,6 @@ void test_status_worktree__disable_pathspec_match(void)
 	cl_git_mkfile("pathspec/LICENSE[1].md", "screaming bracket\n");
 	cl_git_mkfile("pathspec/LICENSE1.md", "no bracket\n");
 
-	memset(&opts, 0, sizeof(opts));
 	opts.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED | 
 		GIT_STATUS_OPT_DISABLE_PATHSPEC_MATCH;
 	opts.pathspec.count = 1;
@@ -843,3 +839,79 @@ void test_status_worktree__line_endings_dont_count_as_changes_with_autocrlf(void
 
 	cl_assert_equal_i(GIT_STATUS_CURRENT, status);
 }
+
+void test_status_worktree__conflicted_item(void)
+{
+	git_repository *repo = cl_git_sandbox_init("status");
+	git_index *index;
+	unsigned int status;
+	git_index_entry ancestor_entry, our_entry, their_entry;
+
+	memset(&ancestor_entry, 0x0, sizeof(git_index_entry));
+	memset(&our_entry, 0x0, sizeof(git_index_entry));
+	memset(&their_entry, 0x0, sizeof(git_index_entry));
+
+	ancestor_entry.path = "modified_file";
+	git_oid_fromstr(&ancestor_entry.oid,
+		"452e4244b5d083ddf0460acf1ecc74db9dcfa11a");
+
+	our_entry.path = "modified_file";
+	git_oid_fromstr(&our_entry.oid,
+		"452e4244b5d083ddf0460acf1ecc74db9dcfa11a");
+
+	their_entry.path = "modified_file";
+	git_oid_fromstr(&their_entry.oid,
+		"452e4244b5d083ddf0460acf1ecc74db9dcfa11a");
+
+	cl_git_pass(git_status_file(&status, repo, "modified_file"));
+	cl_assert_equal_i(GIT_STATUS_WT_MODIFIED, status);
+
+	cl_git_pass(git_repository_index(&index, repo));
+	cl_git_pass(git_index_conflict_add(index, &ancestor_entry,
+		&our_entry, &their_entry));
+
+	cl_git_pass(git_status_file(&status, repo, "modified_file"));
+	cl_assert_equal_i(GIT_STATUS_WT_MODIFIED, status);
+
+	git_index_free(index);
+}
+
+void test_status_worktree__conflict_with_diff3(void)
+{
+	git_repository *repo = cl_git_sandbox_init("status");
+	git_index *index;
+	unsigned int status;
+	git_index_entry ancestor_entry, our_entry, their_entry;
+
+	memset(&ancestor_entry, 0x0, sizeof(git_index_entry));
+	memset(&our_entry, 0x0, sizeof(git_index_entry));
+	memset(&their_entry, 0x0, sizeof(git_index_entry));
+
+	ancestor_entry.path = "modified_file";
+	git_oid_fromstr(&ancestor_entry.oid,
+		"452e4244b5d083ddf0460acf1ecc74db9dcfa11a");
+
+	our_entry.path = "modified_file";
+	git_oid_fromstr(&our_entry.oid,
+		"452e4244b5d083ddf0460acf1ecc74db9dcfa11a");
+
+	their_entry.path = "modified_file";
+	git_oid_fromstr(&their_entry.oid,
+		"452e4244b5d083ddf0460acf1ecc74db9dcfa11a");
+
+	cl_git_pass(git_status_file(&status, repo, "modified_file"));
+	cl_assert_equal_i(GIT_STATUS_WT_MODIFIED, status);
+
+	cl_git_pass(git_repository_index(&index, repo));
+
+	cl_git_pass(git_index_remove(index, "modified_file", 0));
+	cl_git_pass(git_index_conflict_add(index, &ancestor_entry,
+		&our_entry, &their_entry));
+
+	cl_git_pass(git_status_file(&status, repo, "modified_file"));
+
+	cl_assert_equal_i(GIT_STATUS_INDEX_DELETED | GIT_STATUS_WT_NEW, status);
+
+	git_index_free(index);
+}
+

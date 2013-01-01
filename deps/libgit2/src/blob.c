@@ -19,10 +19,10 @@ const void *git_blob_rawcontent(git_blob *blob)
 	return blob->odb_object->raw.data;
 }
 
-size_t git_blob_rawsize(git_blob *blob)
+git_off_t git_blob_rawsize(git_blob *blob)
 {
 	assert(blob);
-	return blob->odb_object->raw.len;
+	return (git_off_t)blob->odb_object->raw.len;
 }
 
 int git_blob__getbuf(git_buf *buffer, git_blob *blob)
@@ -205,7 +205,7 @@ static int blob_create_internal(git_oid *oid, git_repository *repo, const char *
 	return error;
 }
 
-int git_blob_create_fromfile(git_oid *oid, git_repository *repo, const char *path)
+int git_blob_create_fromworkdir(git_oid *oid, git_repository *repo, const char *path)
 {
 	git_buf full_path = GIT_BUF_INIT;
 	const char *workdir;
@@ -295,4 +295,16 @@ cleanup:
 	git_filebuf_cleanup(&file);
 	git__free(content);
 	return error;
+}
+
+int git_blob_is_binary(git_blob *blob)
+{
+	git_buf content;
+
+	assert(blob);
+
+	content.ptr = blob->odb_object->raw.data;
+	content.size = min(blob->odb_object->raw.len, 4000);
+
+	return git_buf_text_is_binary(&content);
 }

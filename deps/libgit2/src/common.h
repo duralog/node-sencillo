@@ -61,9 +61,38 @@ void giterr_set(int error_class, const char *string, ...);
 
 /**
  * Set the error message for a regex failure, using the internal regex
- * error code lookup.
+ * error code lookup and return a libgit error code.
  */
-void giterr_set_regex(const regex_t *regex, int error_code);
+int giterr_set_regex(const regex_t *regex, int error_code);
+
+/**
+ * Check a versioned structure for validity
+ */
+GIT_INLINE(int) giterr__check_version(const void *structure, unsigned int expected_max, const char *name)
+{
+	unsigned int actual;
+
+	if (!structure)
+		return 0;
+
+	actual = *(const unsigned int*)structure;
+	if (actual > 0 && actual <= expected_max)
+		return 0;
+
+	giterr_set(GITERR_INVALID, "Invalid version %d on %s", actual, name);
+	return -1;
+}
+#define GITERR_CHECK_VERSION(S,V,N) if (giterr__check_version(S,V,N) < 0) return -1
+
+/**
+ * Initialize a structure with a version.
+ */
+GIT_INLINE(void) git__init_structure(void *structure, size_t len, unsigned int version)
+{
+	memset(structure, 0, len);
+	*((int*)structure) = version;
+}
+#define GIT_INIT_STRUCTURE(S,V) git__init_structure(S, sizeof(*S), V)
 
 /* NOTE: other giterr functions are in the public errors.h header file */
 

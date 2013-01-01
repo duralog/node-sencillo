@@ -19,7 +19,7 @@ void test_diff_tree__0(void)
 	const char *b_commit = "370fe9ec22";
 	const char *c_commit = "f5b0af1fb4f5c";
 	git_tree *a, *b, *c;
-	git_diff_options opts = {0};
+	git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
 	git_diff_list *diff = NULL;
 	diff_expects exp;
 
@@ -37,7 +37,7 @@ void test_diff_tree__0(void)
 	cl_git_pass(git_diff_tree_to_tree(&diff, g_repo, a, b, &opts));
 
 	cl_git_pass(git_diff_foreach(
-		diff, &exp, diff_file_fn, diff_hunk_fn, diff_line_fn));
+		diff, diff_file_cb, diff_hunk_cb, diff_line_cb, &exp));
 
 	cl_assert_equal_i(5, exp.files);
 	cl_assert_equal_i(2, exp.file_status[GIT_DELTA_ADDED]);
@@ -59,7 +59,7 @@ void test_diff_tree__0(void)
 	cl_git_pass(git_diff_tree_to_tree(&diff, g_repo, c, b, &opts));
 
 	cl_git_pass(git_diff_foreach(
-		diff, &exp, diff_file_fn, diff_hunk_fn, diff_line_fn));
+		diff, diff_file_cb, diff_hunk_cb, diff_line_cb, &exp));
 
 	cl_assert_equal_i(2, exp.files);
 	cl_assert_equal_i(0, exp.file_status[GIT_DELTA_ADDED]);
@@ -94,17 +94,18 @@ void test_diff_tree__options(void)
 	int test_ab_or_cd[] = { 0, 0, 0, 0, 1, 1, 1, 1, 1 };
 	git_diff_options test_options[] = {
 		/* a vs b tests */
-		{ GIT_DIFF_NORMAL, 1, 1, NULL, NULL, {0} },
-		{ GIT_DIFF_NORMAL, 3, 1, NULL, NULL, {0} },
-		{ GIT_DIFF_REVERSE, 2, 1, NULL, NULL, {0} },
-		{ GIT_DIFF_FORCE_TEXT, 2, 1, NULL, NULL, {0} },
+		{ 1, GIT_DIFF_NORMAL, 1, 1, NULL, NULL, {0} },
+		{ 1, GIT_DIFF_NORMAL, 3, 1, NULL, NULL, {0} },
+		{ 1, GIT_DIFF_REVERSE, 2, 1, NULL, NULL, {0} },
+		{ 1, GIT_DIFF_FORCE_TEXT, 2, 1, NULL, NULL, {0} },
 		/* c vs d tests */
-		{ GIT_DIFF_NORMAL, 3, 1, NULL, NULL, {0} },
-		{ GIT_DIFF_IGNORE_WHITESPACE, 3, 1, NULL, NULL, {0} },
-		{ GIT_DIFF_IGNORE_WHITESPACE_CHANGE, 3, 1, NULL, NULL, {0} },
-		{ GIT_DIFF_IGNORE_WHITESPACE_EOL, 3, 1, NULL, NULL, {0} },
-		{ GIT_DIFF_IGNORE_WHITESPACE | GIT_DIFF_REVERSE, 1, 1, NULL, NULL, {0} },
+		{ 1, GIT_DIFF_NORMAL, 3, 1, NULL, NULL, {0} },
+		{ 1, GIT_DIFF_IGNORE_WHITESPACE, 3, 1, NULL, NULL, {0} },
+		{ 1, GIT_DIFF_IGNORE_WHITESPACE_CHANGE, 3, 1, NULL, NULL, {0} },
+		{ 1, GIT_DIFF_IGNORE_WHITESPACE_EOL, 3, 1, NULL, NULL, {0} },
+		{ 1, GIT_DIFF_IGNORE_WHITESPACE | GIT_DIFF_REVERSE, 1, 1, NULL, NULL, {0} },
 	};
+
 	/* to generate these values:
 	 * - cd to tests/resources/attr,
 	 * - mv .gitted .git
@@ -112,6 +113,7 @@ void test_diff_tree__options(void)
 	 * - mv .git .gitted
 	 */
 #define EXPECT_STATUS_ADM(ADDS,DELS,MODS) { 0, ADDS, DELS, MODS, 0, 0, 0, 0, 0 }
+
 	diff_expects test_expects[] = {
 		/* a vs b tests */
 		{ 5, 0, EXPECT_STATUS_ADM(3, 0, 2), 4, 0, 0, 51, 2, 46, 3 },
@@ -146,7 +148,7 @@ void test_diff_tree__options(void)
 			cl_git_pass(git_diff_tree_to_tree(&diff, g_repo, c, d, &opts));
 
 		cl_git_pass(git_diff_foreach(
-			diff, &actual, diff_file_fn, diff_hunk_fn, diff_line_fn));
+			diff, diff_file_cb, diff_hunk_cb, diff_line_cb, &actual));
 
 		expected = &test_expects[i];
 		cl_assert_equal_i(actual.files,     expected->files);
@@ -173,7 +175,7 @@ void test_diff_tree__bare(void)
 	const char *a_commit = "8496071c1b46c85";
 	const char *b_commit = "be3563ae3f79";
 	git_tree *a, *b;
-	git_diff_options opts = {0};
+	git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
 	git_diff_list *diff = NULL;
 	diff_expects exp;
 
@@ -190,7 +192,7 @@ void test_diff_tree__bare(void)
 	cl_git_pass(git_diff_tree_to_tree(&diff, g_repo, a, b, &opts));
 
 	cl_git_pass(git_diff_foreach(
-		diff, &exp, diff_file_fn, diff_hunk_fn, diff_line_fn));
+		diff, diff_file_cb, diff_hunk_cb, diff_line_cb, &exp));
 
 	cl_assert_equal_i(3, exp.files);
 	cl_assert_equal_i(2, exp.file_status[GIT_DELTA_ADDED]);
@@ -240,7 +242,7 @@ void test_diff_tree__merge(void)
 	memset(&exp, 0, sizeof(exp));
 
 	cl_git_pass(git_diff_foreach(
-		diff1, &exp, diff_file_fn, diff_hunk_fn, diff_line_fn));
+		diff1, diff_file_cb, diff_hunk_cb, diff_line_cb, &exp));
 
 	cl_assert_equal_i(6, exp.files);
 	cl_assert_equal_i(2, exp.file_status[GIT_DELTA_ADDED]);
@@ -262,7 +264,7 @@ void test_diff_tree__larger_hunks(void)
 	const char *a_commit = "d70d245ed97ed2aa596dd1af6536e4bfdb047b69";
 	const char *b_commit = "7a9e0b02e63179929fed24f0a3e0f19168114d10";
 	git_tree *a, *b;
-	git_diff_options opts = {0};
+	git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
 	git_diff_list *diff = NULL;
 	size_t d, num_d, h, num_h, l, num_l, header_len, line_len;
 	const git_diff_delta *delta;
@@ -313,6 +315,34 @@ void test_diff_tree__larger_hunks(void)
 
 	git_diff_list_free(diff);
 	diff = NULL;
+
+	git_tree_free(a);
+	git_tree_free(b);
+}
+
+void test_diff_tree__checks_options_version(void)
+{
+	const char *a_commit = "8496071c1b46c85";
+	const char *b_commit = "be3563ae3f79";
+	git_tree *a, *b;
+	git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
+	git_diff_list *diff = NULL;
+	const git_error *err;
+
+	g_repo = cl_git_sandbox_init("testrepo.git");
+
+	cl_assert((a = resolve_commit_oid_to_tree(g_repo, a_commit)) != NULL);
+	cl_assert((b = resolve_commit_oid_to_tree(g_repo, b_commit)) != NULL);
+
+	opts.version = 0;
+	cl_git_fail(git_diff_tree_to_tree(&diff, g_repo, a, b, &opts));
+	err = giterr_last();
+	cl_assert_equal_i(GITERR_INVALID, err->klass);
+
+	giterr_clear();
+	opts.version = 1024;
+	cl_git_fail(git_diff_tree_to_tree(&diff, g_repo, a, b, &opts));
+	err = giterr_last();
 
 	git_tree_free(a);
 	git_tree_free(b);

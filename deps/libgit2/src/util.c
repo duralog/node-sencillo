@@ -199,9 +199,17 @@ int git__strncmp(const char *a, const char *b, size_t sz)
 
 int git__strncasecmp(const char *a, const char *b, size_t sz)
 {
-	while (sz && *a && *b && tolower(*a) == tolower(*b))
+	int al = 0, bl = 0;
+
+	while (sz && *a && *b) {
+		al = (unsigned char)tolower(*a);
+		bl = (unsigned char)tolower(*b);
+		if (al != bl)
+			break;
 		--sz, ++a, ++b;
-	return !sz ? 0 : (tolower(*a) - tolower(*b));
+	}
+
+	return !sz ? 0 : al - bl;
 }
 
 void git__strntolower(char *str, size_t len)
@@ -261,6 +269,24 @@ char *git__strtok(char **end, const char *sep)
 			**end = '\0';
 			++*end;
 		}
+
+		return start;
+	}
+
+	return NULL;
+}
+
+/* Similar to strtok, but does not collapse repeated tokens. */
+char *git__strsep(char **end, const char *sep)
+{
+	char *start = *end, *ptr = *end;
+
+	while (*ptr && !strchr(sep, *ptr))
+		++ptr;
+
+	if (*ptr) {
+		*end = ptr + 1;
+		*ptr = '\0';
 
 		return start;
 	}
@@ -447,7 +473,7 @@ int git__bsearch(
 
 /**
  * A strcmp wrapper
- * 
+ *
  * We don't want direct pointers to the CRT on Windows, we may
  * get stdcall conflicts.
  */

@@ -28,18 +28,18 @@ static int create_branch(
 	const git_oid *target,
 	const char *name)
 {
-	git_object *head_obj = NULL;
+	git_commit *head_obj = NULL;
 	git_reference *branch_ref;
 	int error;
 
 	/* Find the target commit */
-	if ((error = git_object_lookup(&head_obj, repo, target, GIT_OBJ_ANY)) < 0)
+	if ((error = git_commit_lookup(&head_obj, repo, target)) < 0)
 		return error;
 
 	/* Create the new branch */
 	error = git_branch_create(&branch_ref, repo, name, head_obj, 0);
 
-	git_object_free(head_obj);
+	git_commit_free(head_obj);
 
 	if (!error)
 		*branch = branch_ref;
@@ -122,7 +122,7 @@ static int reference_matches_remote_head(
 	if (git_buf_len(&head_info->branchname) > 0)
 		return 0;
 
-	if (git_reference_name_to_oid(
+	if (git_reference_name_to_id(
 		&oid,
 		head_info->repo,
 		reference_name) < 0) {
@@ -262,15 +262,14 @@ cleanup:
 
 static int setup_remotes_and_fetch(
 		git_repository *repo,
-		const char *origin_url,
+		git_remote *origin,
 		git_transfer_progress_callback progress_cb,
 		void *progress_payload)
 {
 	int retcode = GIT_ERROR;
-	git_remote *origin = NULL;
 
-	/* Create the "origin" remote */
-	if (!git_remote_add(&origin, repo, GIT_REMOTE_ORIGIN, origin_url)) {
+	/* Add the origin remote */
+	if (!git_remote_set_repository(origin, repo) && !git_remote_save(origin)) {
 		/*
 		 * Don't write FETCH_HEAD, we'll check out the remote tracking
 		 * branch ourselves based on the server's default.
@@ -278,7 +277,7 @@ static int setup_remotes_and_fetch(
 		git_remote_set_update_fetchhead(origin, 0);
 
 		/* Connect and download everything */
-		if (!git_remote_connect(origin, GIT_DIR_FETCH)) {
+		if (!git_remote_connect(origin, GIT_DIRECTION_FETCH)) {
 			if (!git_remote_download(origin, progress_cb, progress_payload)) {
 				/* Create "origin/foo" branches for all remote branches */
 				if (!git_remote_update_tips(origin)) {
@@ -290,7 +289,6 @@ static int setup_remotes_and_fetch(
 			}
 			git_remote_disconnect(origin);
 		}
-		git_remote_free(origin);
 	}
 
 	return retcode;
@@ -325,7 +323,7 @@ static bool should_checkout(
 
 static int clone_internal(
 	git_repository **out,
-	const char *origin_url,
+	git_remote *origin_remote,
 	const char *path,
 	git_transfer_progress_callback fetch_progress_cb,
 	void *fetch_progress_payload,
@@ -340,7 +338,7 @@ static int clone_internal(
 	}
 
 	if (!(retcode = git_repository_init(&repo, path, is_bare))) {
-		if ((retcode = setup_remotes_and_fetch(repo, origin_url,
+		if ((retcode = setup_remotes_and_fetch(repo, origin_remote,
 						fetch_progress_cb, fetch_progress_payload)) < 0) {
 			/* Failed to fetch; clean up */
 			git_repository_free(repo);
@@ -357,42 +355,25 @@ static int clone_internal(
 	return retcode;
 }
 
-int git_clone_bare(
-		git_repository **out,
-		const char *origin_url,
-		const char *dest_path,
-		git_transfer_progress_callback fetch_progress_cb,
-		void *fetch_progress_payload)
-{
-	assert(out && origin_url && dest_path);
-
-	return clone_internal(
-		out,
-		origin_url,
-		dest_path,
-		fetch_progress_cb,
-		fetch_progress_payload,
-		NULL,
-		1);
-}
-
-
 int git_clone(
-		git_repository **out,
-		const char *origin_url,
-		const char *workdir_path,
-		git_transfer_progress_callback fetch_progress_cb,
-		void *fetch_progress_payload,
-		git_checkout_opts *checkout_opts)
+	git_repository **out,
+	git_remote *origin,
+	const char *local_path,
+	const git_clone_options *options)
 {
-	assert(out && origin_url && workdir_path);
+	git_clone_options dummy_options = GIT_CLONE_OPTIONS_INIT;
+
+	assert(out && origin && local_path);
+	if (!options) options = &dummy_options;
+
+	GITERR_CHECK_VERSION(options, GIT_CLONE_OPTIONS_VERSION, "git_clone_options");
 
 	return clone_internal(
 		out,
-		origin_url,
-		workdir_path,
-		fetch_progress_cb,
-		fetch_progress_payload,
-		checkout_opts,
-		0);
+		origin,
+		local_path,
+		options->fetch_progress_cb,
+		options->fetch_progress_payload,
+		options->checkout_opts,
+		options->bare ? 1 : 0);
 }
