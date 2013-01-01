@@ -10,6 +10,7 @@
 #include "fileops.h"
 #include "filebuf.h"
 #include "buffer.h"
+#include "buf_text.h"
 #include "git2/config.h"
 #include "git2/types.h"
 #include "strmap.h"
@@ -64,7 +65,7 @@ typedef struct cvar_t {
 		 (iter) = (tmp))
 
 typedef struct {
-	git_config_file parent;
+	git_config_backend parent;
 
 	git_strmap *values;
 
@@ -149,7 +150,7 @@ static void free_vars(git_strmap *values)
 	git_strmap_free(values);
 }
 
-static int config_open(git_config_file *cfg, unsigned int level)
+static int config_open(git_config_backend *cfg, unsigned int level)
 {
 	int res;
 	diskfile_backend *b = (diskfile_backend *)cfg;
@@ -176,7 +177,7 @@ static int config_open(git_config_file *cfg, unsigned int level)
 	return res;
 }
 
-static int config_refresh(git_config_file *cfg)
+static int config_refresh(git_config_backend *cfg)
 {
 	int res, updated = 0;
 	diskfile_backend *b = (diskfile_backend *)cfg;
@@ -203,7 +204,7 @@ static int config_refresh(git_config_file *cfg)
 	return res;
 }
 
-static void backend_free(git_config_file *_backend)
+static void backend_free(git_config_backend *_backend)
 {
 	diskfile_backend *backend = (diskfile_backend *)_backend;
 
@@ -216,7 +217,7 @@ static void backend_free(git_config_file *_backend)
 }
 
 static int file_foreach(
-	git_config_file *backend,
+	git_config_backend *backend,
 	const char *regexp,
 	int (*fn)(const git_config_entry *, void *),
 	void *data)
@@ -262,7 +263,7 @@ cleanup:
 	return result;
 }
 
-static int config_set(git_config_file *cfg, const char *name, const char *value)
+static int config_set(git_config_backend *cfg, const char *name, const char *value)
 {
 	cvar_t *var = NULL, *old_var;
 	diskfile_backend *b = (diskfile_backend *)cfg;
@@ -346,7 +347,7 @@ static int config_set(git_config_file *cfg, const char *name, const char *value)
 /*
  * Internal function that actually gets the value in string form
  */
-static int config_get(git_config_file *cfg, const char *name, const git_config_entry **out)
+static int config_get(const git_config_backend *cfg, const char *name, const git_config_entry **out)
 {
 	diskfile_backend *b = (diskfile_backend *)cfg;
 	char *key;
@@ -368,7 +369,7 @@ static int config_get(git_config_file *cfg, const char *name, const git_config_e
 }
 
 static int config_get_multivar(
-	git_config_file *cfg,
+	git_config_backend *cfg,
 	const char *name,
 	const char *regex_str,
 	int (*fn)(const git_config_entry *, void *),
@@ -431,7 +432,7 @@ static int config_get_multivar(
 }
 
 static int config_set_multivar(
-	git_config_file *cfg, const char *name, const char *regexp, const char *value)
+	git_config_backend *cfg, const char *name, const char *regexp, const char *value)
 {
 	int replaced = 0;
 	cvar_t *var, *newvar;
@@ -506,7 +507,7 @@ static int config_set_multivar(
 	return result;
 }
 
-static int config_delete(git_config_file *cfg, const char *name)
+static int config_delete(git_config_backend *cfg, const char *name)
 {
 	cvar_t *var;
 	diskfile_backend *b = (diskfile_backend *)cfg;
@@ -540,14 +541,14 @@ static int config_delete(git_config_file *cfg, const char *name)
 	return result;
 }
 
-int git_config_file__ondisk(git_config_file **out, const char *path)
+int git_config_file__ondisk(git_config_backend **out, const char *path)
 {
 	diskfile_backend *backend;
 
-	backend = git__malloc(sizeof(diskfile_backend));
+	backend = git__calloc(1, sizeof(diskfile_backend));
 	GITERR_CHECK_ALLOC(backend);
 
-	memset(backend, 0x0, sizeof(diskfile_backend));
+	backend->parent.version = GIT_CONFIG_BACKEND_VERSION;
 
 	backend->file_path = git__strdup(path);
 	GITERR_CHECK_ALLOC(backend->file_path);
@@ -562,7 +563,7 @@ int git_config_file__ondisk(git_config_file **out, const char *path)
 	backend->parent.refresh = config_refresh;
 	backend->parent.free = backend_free;
 
-	*out = (git_config_file *)backend;
+	*out = (git_config_backend *)backend;
 
 	return 0;
 }
@@ -854,17 +855,14 @@ fail_parse:
 
 static int skip_bom(diskfile_backend *cfg)
 {
-	static const char utf8_bom[] = { '\xef', '\xbb', '\xbf' };
+	git_bom_t bom;
+	int bom_offset = git_buf_text_detect_bom(&bom,
+		&cfg->reader.buffer, cfg->reader.read_ptr - cfg->reader.buffer.ptr);
 
-	if (cfg->reader.buffer.size < sizeof(utf8_bom))
-		return 0;
+	if (bom == GIT_BOM_UTF8)
+		cfg->reader.read_ptr += bom_offset;
 
-	if (memcmp(cfg->reader.read_ptr, utf8_bom, sizeof(utf8_bom)) == 0)
-		cfg->reader.read_ptr += sizeof(utf8_bom);
-
-	/* TODO: the reference implementation does pretty stupid
-		stuff with the BoM
-	*/
+	/* TODO: reference implementation is pretty stupid with BoM */
 
 	return 0;
 }
@@ -1220,7 +1218,7 @@ static int config_write(diskfile_backend *cfg, const char *key, const regex_t *p
 			}
 
 			/* If we are here, there is at least a section line */
-			if (*(cfg->reader.buffer.ptr + cfg->reader.buffer.size - 1) != '\n')
+			if (cfg->reader.buffer.size > 0 && *(cfg->reader.buffer.ptr + cfg->reader.buffer.size - 1) != '\n')
 				git_filebuf_write(&file, "\n", 1);
 
 			git_filebuf_printf(&file, "\t%s = %s\n", name, value);

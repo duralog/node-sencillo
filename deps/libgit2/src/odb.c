@@ -34,7 +34,7 @@ typedef struct
 
 static int load_alternates(git_odb *odb, const char *objects_dir, int alternate_depth);
 
-static int format_object_header(char *hdr, size_t n, size_t obj_len, git_otype obj_type)
+int git_odb__format_object_header(char *hdr, size_t n, size_t obj_len, git_otype obj_type)
 {
 	const char *type_str = git_object_type2string(obj_type);
 	int len = p_snprintf(hdr, n, "%s %"PRIuZ, type_str, obj_len);
@@ -55,7 +55,7 @@ int git_odb__hashobj(git_oid *id, git_rawobj *obj)
 	if (!obj->data && obj->len != 0)
 		return -1;
 
-	hdrlen = format_object_header(header, sizeof(header), obj->len, obj->type);
+	hdrlen = git_odb__format_object_header(header, sizeof(header), obj->len, obj->type);
 
 	vec[0].data = header;
 	vec[0].len = hdrlen;
@@ -133,7 +133,7 @@ int git_odb__hashfd(git_oid *out, git_file fd, size_t size, git_otype type)
 	if ((error = git_hash_ctx_init(&ctx)) < 0)
 		return -1;
 
-	hdr_len = format_object_header(hdr, sizeof(hdr), size, type);
+	hdr_len = git_odb__format_object_header(hdr, sizeof(hdr), size, type);
 
 	if ((error = git_hash_update(&ctx, hdr, hdr_len)) < 0)
 		goto done;
@@ -369,6 +369,8 @@ static int add_backend_internal(git_odb *odb, git_odb_backend *backend, int prio
 
 	assert(odb && backend);
 
+	GITERR_CHECK_VERSION(backend, GIT_ODB_BACKEND_VERSION, "git_odb_backend");
+
 	/* Check if the backend is already owned by another ODB */
 	assert(!backend->odb || backend->odb == odb);
 
@@ -470,6 +472,11 @@ static int load_alternates(git_odb *odb, const char *objects_dir, int alternate_
 	return result;
 }
 
+int git_odb_add_disk_alternate(git_odb *odb, const char *path)
+{
+	return add_default_backends(odb, path, 1, 0);
+}
+
 int git_odb_open(git_odb **out, const char *objects_dir)
 {
 	git_odb *db;
@@ -481,8 +488,7 @@ int git_odb_open(git_odb **out, const char *objects_dir)
 	if (git_odb_new(&db) < 0)
 		return -1;
 
-	if (add_default_backends(db, objects_dir, 0, 0) < 0)
-	{
+	if (add_default_backends(db, objects_dir, 0, 0) < 0) {
 		git_odb_free(db);
 		return -1;
 	}
@@ -683,14 +689,14 @@ int git_odb_read_prefix(
 	return 0;
 }
 
-int git_odb_foreach(git_odb *db, int (*cb)(git_oid *oid, void *data), void *data)
+int git_odb_foreach(git_odb *db, git_odb_foreach_cb cb, void *payload)
 {
 	unsigned int i;
 	backend_internal *internal;
 
 	git_vector_foreach(&db->backends, i, internal) {
 		git_odb_backend *b = internal->backend;
-		int error = b->foreach(b, cb, data);
+		int error = b->foreach(b, cb, payload);
 		if (error < 0)
 			return error;
 	}
@@ -706,6 +712,10 @@ int git_odb_write(
 	git_odb_stream *stream;
 
 	assert(oid && db);
+
+	git_odb_hash(oid, data, len, type);
+	if (git_odb_exists(db, oid))
+		return 0;
 
 	for (i = 0; i < db->backends.length && error < 0; ++i) {
 		backend_internal *internal = git_vector_get(&db->backends, i);

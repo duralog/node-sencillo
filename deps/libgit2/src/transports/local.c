@@ -26,6 +26,7 @@
 
 typedef struct {
 	git_transport parent;
+	git_remote *owner;
 	char *url;
 	int direction;
 	int flags;
@@ -41,17 +42,25 @@ static int add_ref(transport_local *t, const char *name)
 	git_remote_head *head;
 	git_object *obj = NULL, *target = NULL;
 	git_buf buf = GIT_BUF_INIT;
+	int error;
 
-	head = (git_remote_head *)git__calloc(1, sizeof(git_remote_head));
+	head = git__calloc(1, sizeof(git_remote_head));
 	GITERR_CHECK_ALLOC(head);
 
 	head->name = git__strdup(name);
 	GITERR_CHECK_ALLOC(head->name);
 
-	if (git_reference_name_to_oid(&head->oid, t->repo, name) < 0) {
+	error = git_reference_name_to_id(&head->oid, t->repo, name);
+	if (error < 0) {
 		git__free(head->name);
 		git__free(head);
-		return -1;
+		if (!strcmp(name, GIT_HEAD_FILE) && error == GIT_ENOTFOUND) {
+			/* This is actually okay.  Empty repos often have a HEAD that points to
+			 * a nonexistent "refs/heads/master". */
+			giterr_clear();
+			return 0;
+		}
+		return error;
 	}
 
 	if (git_vector_insert(&t->refs, head) < 0)
@@ -77,7 +86,7 @@ static int add_ref(transport_local *t, const char *name)
 	}
 
 	/* And if it's a tag, peel it, and add it to the list */
-	head = (git_remote_head *)git__calloc(1, sizeof(git_remote_head));
+	head = git__calloc(1, sizeof(git_remote_head));
 	GITERR_CHECK_ALLOC(head);
 	if (git_buf_join(&buf, 0, name, peeled) < 0)
 		return -1;
@@ -142,6 +151,7 @@ static int local_connect(
 	git_transport *transport,
 	const char *url,
 	git_cred_acquire_cb cred_acquire_cb,
+	void *cred_acquire_payload,
 	int direction, int flags)
 {
 	git_repository *repo;
@@ -151,6 +161,7 @@ static int local_connect(
 	git_buf buf = GIT_BUF_INIT;
 
 	GIT_UNUSED(cred_acquire_cb);
+	GIT_UNUSED(cred_acquire_payload);
 
 	t->url = git__strdup(url);
 	GITERR_CHECK_ALLOC(t->url);
@@ -306,7 +317,7 @@ static int local_download_pack(
 		if (git_odb_exists(odb, &oid)) continue;
 
 		if (!git_object_lookup((git_object**)&commit, t->repo, &oid, GIT_OBJ_COMMIT)) {
-			const git_oid *tree_oid = git_commit_tree_oid(commit);
+			const git_oid *tree_oid = git_commit_tree_id(commit);
 			git_commit_free(commit);
 
 			/* Add the commit and its tree */
@@ -339,13 +350,11 @@ cleanup:
 	return error;
 }
 
-static int local_is_connected(git_transport *transport, int *connected)
+static int local_is_connected(git_transport *transport)
 {
 	transport_local *t = (transport_local *)transport;
 
-	*connected = t->connected;
-
-	return 0;
+	return t->connected;
 }
 
 static int local_read_flags(git_transport *transport, int *flags)
@@ -398,17 +407,16 @@ static void local_free(git_transport *transport)
  * Public API *
  **************/
 
-int git_transport_local(git_transport **out, void *param)
+int git_transport_local(git_transport **out, git_remote *owner, void *param)
 {
 	transport_local *t;
 
 	GIT_UNUSED(param);
 
-	t = git__malloc(sizeof(transport_local));
+	t = git__calloc(1, sizeof(transport_local));
 	GITERR_CHECK_ALLOC(t);
 
-	memset(t, 0x0, sizeof(transport_local));
-		
+	t->parent.version = GIT_TRANSPORT_VERSION;
 	t->parent.connect = local_connect;
 	t->parent.negotiate_fetch = local_negotiate_fetch;
 	t->parent.download_pack = local_download_pack;
@@ -418,6 +426,8 @@ int git_transport_local(git_transport **out, void *param)
 	t->parent.is_connected = local_is_connected;
 	t->parent.read_flags = local_read_flags;
 	t->parent.cancel = local_cancel;
+
+	t->owner = owner;
 
 	*out = (git_transport *) t;
 

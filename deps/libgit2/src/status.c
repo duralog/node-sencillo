@@ -78,14 +78,14 @@ static unsigned int workdir_delta2status(git_delta_t workdir_status)
 }
 
 typedef struct {
-	int (*cb)(const char *, unsigned int, void *);
-	void *cbdata;
+	git_status_cb cb;
+	void *payload;
 } status_user_callback;
 
 static int status_invoke_cb(
-	void *cbref, git_diff_delta *i2h, git_diff_delta *w2i)
+	git_diff_delta *i2h, git_diff_delta *w2i, void *payload)
 {
-	status_user_callback *usercb = cbref;
+	status_user_callback *usercb = payload;
 	const char *path = NULL;
 	unsigned int status = 0;
 
@@ -98,17 +98,17 @@ static int status_invoke_cb(
 		status |= index_delta2status(i2h->status);
 	}
 
-	return usercb->cb(path, status, usercb->cbdata);
+	return usercb->cb(path, status, usercb->payload);
 }
 
 int git_status_foreach_ext(
 	git_repository *repo,
 	const git_status_options *opts,
-	int (*cb)(const char *, unsigned int, void *),
-	void *cbdata)
+	git_status_cb cb,
+	void *payload)
 {
 	int err = 0;
-	git_diff_options diffopt;
+	git_diff_options diffopt = GIT_DIFF_OPTIONS_INIT;
 	git_diff_list *idx2head = NULL, *wd2idx = NULL;
 	git_tree *head = NULL;
 	git_status_show_t show =
@@ -116,6 +116,8 @@ int git_status_foreach_ext(
 	status_user_callback usercb;
 
 	assert(show <= GIT_STATUS_SHOW_INDEX_THEN_WORKDIR);
+
+	GITERR_CHECK_VERSION(opts, GIT_STATUS_OPTIONS_VERSION, "git_status_options");
 
 	if (show != GIT_STATUS_SHOW_INDEX_ONLY &&
 		(err = git_repository__ensure_not_bare(repo, "status")) < 0)
@@ -126,7 +128,6 @@ int git_status_foreach_ext(
 		!(err == GIT_ENOTFOUND || err == GIT_EORPHANEDHEAD))
 			return err;
 
-	memset(&diffopt, 0, sizeof(diffopt));
 	memcpy(&diffopt.pathspec, &opts->pathspec, sizeof(diffopt.pathspec));
 
 	diffopt.flags = GIT_DIFF_INCLUDE_TYPECHANGE;
@@ -144,15 +145,15 @@ int git_status_foreach_ext(
 	/* TODO: support EXCLUDE_SUBMODULES flag */
 
 	if (show != GIT_STATUS_SHOW_WORKDIR_ONLY &&
-		(err = git_diff_index_to_tree(&idx2head, repo, head, NULL, &diffopt)) < 0)
+		(err = git_diff_tree_to_index(&idx2head, repo, head, NULL, &diffopt)) < 0)
 		goto cleanup;
 
 	if (show != GIT_STATUS_SHOW_INDEX_ONLY &&
-		(err = git_diff_workdir_to_index(&wd2idx, repo, NULL, &diffopt)) < 0)
+		(err = git_diff_index_to_workdir(&wd2idx, repo, NULL, &diffopt)) < 0)
 		goto cleanup;
 
 	usercb.cb = cb;
-	usercb.cbdata = cbdata;
+	usercb.payload = payload;
 
 	if (show == GIT_STATUS_SHOW_INDEX_THEN_WORKDIR) {
 		if ((err = git_diff__paired_foreach(
@@ -178,12 +179,11 @@ cleanup:
 
 int git_status_foreach(
 	git_repository *repo,
-	int (*callback)(const char *, unsigned int, void *),
+	git_status_cb callback,
 	void *payload)
 {
-	git_status_options opts;
+	git_status_options opts = GIT_STATUS_OPTIONS_INIT;
 
-	memset(&opts, 0, sizeof(opts));
 	opts.show  = GIT_STATUS_SHOW_INDEX_AND_WORKDIR;
 	opts.flags = GIT_STATUS_OPT_INCLUDE_IGNORED |
 		GIT_STATUS_OPT_INCLUDE_UNTRACKED |
@@ -224,16 +224,14 @@ int git_status_file(
 	const char *path)
 {
 	int error;
-	git_status_options opts;
-	struct status_file_info sfi;
+	git_status_options opts = GIT_STATUS_OPTIONS_INIT;
+	struct status_file_info sfi = {0};
 
 	assert(status_flags && repo && path);
 
-	memset(&sfi, 0, sizeof(sfi));
 	if ((sfi.expected = git__strdup(path)) == NULL)
 		return -1;
 
-	memset(&opts, 0, sizeof(opts));
 	opts.show  = GIT_STATUS_SHOW_INDEX_AND_WORKDIR;
 	opts.flags = GIT_STATUS_OPT_INCLUDE_IGNORED |
 		GIT_STATUS_OPT_INCLUDE_UNTRACKED |

@@ -12,6 +12,7 @@
 #include "git2/index.h"
 #include "git2/submodule.h"
 #include "buffer.h"
+#include "buf_text.h"
 #include "vector.h"
 #include "posix.h"
 #include "config_file.h"
@@ -66,7 +67,7 @@ __KHASH_IMPL(
 	str_hash_no_trailing_slash, str_equal_no_trailing_slash);
 
 static int load_submodule_config(git_repository *repo, bool force);
-static git_config_file *open_gitmodules(git_repository *, bool, const git_oid *);
+static git_config_backend *open_gitmodules(git_repository *, bool, const git_oid *);
 static int lookup_head_remote(git_buf *url, git_repository *repo);
 static int submodule_get(git_submodule **, git_repository *, const char *, const char *);
 static void submodule_release(git_submodule *sm, int decr);
@@ -201,10 +202,10 @@ int git_submodule_add_setup(
 	int use_gitlink)
 {
 	int error = 0;
-	git_config_file *mods = NULL;
+	git_config_backend *mods = NULL;
 	git_submodule *sm;
 	git_buf name = GIT_BUF_INIT, real_url = GIT_BUF_INIT;
-	git_repository_init_options initopt;
+	git_repository_init_options initopt = GIT_REPOSITORY_INIT_OPTIONS_INIT;
 	git_repository *subrepo = NULL;
 
 	assert(repo && url && path);
@@ -274,7 +275,6 @@ int git_submodule_add_setup(
 	 * Old style: sub-repo goes directly into repo/<name>/.git/
 	 */
 
-	memset(&initopt, 0, sizeof(initopt));
 	initopt.flags = GIT_REPOSITORY_INIT_MKPATH |
 		GIT_REPOSITORY_INIT_NO_REINIT;
 	initopt.origin_url = real_url.ptr;
@@ -341,7 +341,7 @@ int git_submodule_add_finalize(git_submodule *sm)
 int git_submodule_add_to_index(git_submodule *sm, int write_index)
 {
 	int error;
-	git_repository *repo, *sm_repo;
+	git_repository *repo, *sm_repo = NULL;
 	git_index *index;
 	git_buf path = GIT_BUF_INIT;
 	git_commit *head;
@@ -412,7 +412,7 @@ cleanup:
 int git_submodule_save(git_submodule *submodule)
 {
 	int error = 0;
-	git_config_file *mods;
+	git_config_backend *mods;
 	git_buf key = GIT_BUF_INIT;
 
 	assert(submodule);
@@ -513,7 +513,7 @@ int git_submodule_set_url(git_submodule *submodule, const char *url)
 	return 0;
 }
 
-const git_oid *git_submodule_index_oid(git_submodule *submodule)
+const git_oid *git_submodule_index_id(git_submodule *submodule)
 {
 	assert(submodule);
 
@@ -523,7 +523,7 @@ const git_oid *git_submodule_index_oid(git_submodule *submodule)
 		return NULL;
 }
 
-const git_oid *git_submodule_head_oid(git_submodule *submodule)
+const git_oid *git_submodule_head_id(git_submodule *submodule)
 {
 	assert(submodule);
 
@@ -533,7 +533,7 @@ const git_oid *git_submodule_head_oid(git_submodule *submodule)
 		return NULL;
 }
 
-const git_oid *git_submodule_wd_oid(git_submodule *submodule)
+const git_oid *git_submodule_wd_id(git_submodule *submodule)
 {
 	assert(submodule);
 
@@ -695,7 +695,7 @@ int git_submodule_open(
 
 	/* if we have opened the submodule successfully, let's grab the HEAD OID */
 	if (!error && !(submodule->flags & GIT_SUBMODULE_STATUS__WD_OID_VALID)) {
-		if (!git_reference_name_to_oid(
+		if (!git_reference_name_to_id(
 				&submodule->wd_oid, *subrepo, GIT_HEAD_FILE))
 			submodule->flags |= GIT_SUBMODULE_STATUS__WD_OID_VALID;
 		else
@@ -717,7 +717,7 @@ int git_submodule_reload(git_submodule *submodule)
 	git_index *index;
 	int pos, error;
 	git_tree *head;
-	git_config_file *mods;
+	git_config_backend *mods;
 
 	assert(submodule);
 
@@ -733,7 +733,7 @@ int git_submodule_reload(git_submodule *submodule)
 
 	pos = git_index_find(index, submodule->path);
 	if (pos >= 0) {
-		git_index_entry *entry = git_index_get_byindex(index, pos);
+		const git_index_entry *entry = git_index_get_byindex(index, pos);
 
 		if (S_ISGITLINK(entry->mode)) {
 			if ((error = submodule_load_from_index(repo, entry)) < 0)
@@ -782,7 +782,7 @@ int git_submodule_reload(git_submodule *submodule)
 		git_buf path = GIT_BUF_INIT;
 
 		git_buf_sets(&path, "submodule\\.");
-		git_buf_puts_escape_regex(&path, submodule->name);
+		git_buf_text_puts_escape_regex(&path, submodule->name);
 		git_buf_puts(&path, ".*");
 
 		if (git_buf_oom(&path))
@@ -1156,7 +1156,7 @@ static int load_submodule_config_from_head(
 	if ((error = git_repository_head_tree(&head, repo)) < 0)
 		return error;
 
-	if ((error = git_iterator_for_tree(&i, repo, head)) < 0) {
+	if ((error = git_iterator_for_tree(&i, head)) < 0) {
 		git_tree_free(head);
 		return error;
 	}
@@ -1187,14 +1187,14 @@ static int load_submodule_config_from_head(
 	return error;
 }
 
-static git_config_file *open_gitmodules(
+static git_config_backend *open_gitmodules(
 	git_repository *repo,
 	bool okay_to_create,
 	const git_oid *gitmodules_oid)
 {
 	const char *workdir = git_repository_workdir(repo);
 	git_buf path = GIT_BUF_INIT;
-	git_config_file *mods = NULL;
+	git_config_backend *mods = NULL;
 
 	if (workdir != NULL) {
 		if (git_buf_joinpath(&path, workdir, GIT_MODULES_FILE) != 0)
@@ -1230,7 +1230,7 @@ static int load_submodule_config(git_repository *repo, bool force)
 	int error;
 	git_oid gitmodules_oid;
 	git_buf path = GIT_BUF_INIT;
-	git_config_file *mods = NULL;
+	git_config_backend *mods = NULL;
 
 	if (repo->submodules && !force)
 		return 0;
@@ -1316,7 +1316,7 @@ static int lookup_head_remote(git_buf *url, git_repository *repo)
 	/* remote should refer to something like refs/remotes/ORIGIN/BRANCH */
 
 	if (git_reference_type(remote) != GIT_REF_SYMBOLIC ||
-		git__prefixcmp(git_reference_target(remote), GIT_REFS_REMOTES_DIR) != 0)
+		git__prefixcmp(git_reference_symbolic_target(remote), GIT_REFS_REMOTES_DIR) != 0)
 	{
 		giterr_set(GITERR_SUBMODULE,
 			"Cannot resolve relative URL when HEAD is not symbolic");
@@ -1324,7 +1324,7 @@ static int lookup_head_remote(git_buf *url, git_repository *repo)
 		goto cleanup;
 	}
 
-	scan = tgt = git_reference_target(remote) + strlen(GIT_REFS_REMOTES_DIR);
+	scan = tgt = git_reference_symbolic_target(remote) + strlen(GIT_REFS_REMOTES_DIR);
 	while (*scan && (*scan != '/' || (scan > tgt && scan[-1] != '\\')))
 		scan++; /* find non-escaped slash to end ORIGIN name */
 
@@ -1378,7 +1378,7 @@ static int submodule_update_config(
 		goto cleanup;
 
 	if (!value)
-		error = git_config_delete(config, key.ptr);
+		error = git_config_delete_entry(config, key.ptr);
 	else
 		error = git_config_set_string(config, key.ptr, value);
 
@@ -1389,8 +1389,8 @@ cleanup:
 
 static int submodule_index_status(unsigned int *status, git_submodule *sm)
 {
-	const git_oid *head_oid  = git_submodule_head_oid(sm);
-	const git_oid *index_oid = git_submodule_index_oid(sm);
+	const git_oid *head_oid  = git_submodule_head_id(sm);
+	const git_oid *index_oid = git_submodule_index_id(sm);
 
 	if (!head_oid) {
 		if (index_oid)
@@ -1410,7 +1410,7 @@ static int submodule_wd_status(unsigned int *status, git_submodule *sm)
 	const git_oid *wd_oid, *index_oid;
 	git_repository *sm_repo = NULL;
 
-	/* open repo now if we need it (so wd_oid() call won't reopen) */
+	/* open repo now if we need it (so wd_id() call won't reopen) */
 	if ((sm->ignore == GIT_SUBMODULE_IGNORE_NONE ||
 		 sm->ignore == GIT_SUBMODULE_IGNORE_UNTRACKED) &&
 		(sm->flags & GIT_SUBMODULE_STATUS_IN_WD) != 0)
@@ -1419,8 +1419,8 @@ static int submodule_wd_status(unsigned int *status, git_submodule *sm)
 			return error;
 	}
 
-	index_oid = git_submodule_index_oid(sm);
-	wd_oid    = git_submodule_wd_oid(sm);
+	index_oid = git_submodule_index_id(sm);
+	wd_oid    = git_submodule_wd_id(sm);
 
 	if (!index_oid) {
 		if (wd_oid)
@@ -1438,7 +1438,7 @@ static int submodule_wd_status(unsigned int *status, git_submodule *sm)
 
 	if (sm_repo != NULL) {
 		git_tree *sm_head;
-		git_diff_options opt;
+		git_diff_options opt = GIT_DIFF_OPTIONS_INIT;
 		git_diff_list *diff;
 
 		/* the diffs below could be optimized with an early termination
@@ -1451,11 +1451,10 @@ static int submodule_wd_status(unsigned int *status, git_submodule *sm)
 		if ((error = git_repository_head_tree(&sm_head, sm_repo)) < 0)
 			return error;
 
-		memset(&opt, 0, sizeof(opt));
 		if (sm->ignore == GIT_SUBMODULE_IGNORE_NONE)
 			opt.flags |= GIT_DIFF_INCLUDE_UNTRACKED;
 
-		error = git_diff_index_to_tree(&diff, sm_repo, sm_head, NULL, &opt);
+		error = git_diff_tree_to_index(&diff, sm_repo, sm_head, NULL, &opt);
 
 		if (!error) {
 			if (git_diff_num_deltas(diff) > 0)
@@ -1472,7 +1471,7 @@ static int submodule_wd_status(unsigned int *status, git_submodule *sm)
 
 		/* perform index-to-workdir diff on submodule */
 
-		error = git_diff_workdir_to_index(&diff, sm_repo, NULL, &opt);
+		error = git_diff_index_to_workdir(&diff, sm_repo, NULL, &opt);
 
 		if (!error) {
 			size_t untracked =

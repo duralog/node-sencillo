@@ -41,14 +41,14 @@ static int update_head(git_repository *repo, git_object *commit)
 		if ((error = git_reference_lookup(&head, repo, GIT_HEAD_FILE)) < 0)
 			goto cleanup;
 
-		if ((error = git_reference_create_oid(
+		if ((error = git_reference_create(
 			&target,
 			repo,
-			git_reference_target(head),
+			git_reference_symbolic_target(head),
 			git_object_id(commit), 0)) < 0)
 				goto cleanup;
 	} else {
-		if ((error = git_reference_set_oid(head, git_object_id(commit))) < 0)
+		if ((error = git_reference_set_target(head, git_object_id(commit))) < 0)
 			goto cleanup;
 	}
 
@@ -63,13 +63,13 @@ cleanup:
 int git_reset(
 	git_repository *repo,
 	git_object *target,
-	git_reset_type reset_type)
+	git_reset_t reset_type)
 {
 	git_object *commit = NULL;
 	git_index *index = NULL;
 	git_tree *tree = NULL;
 	int error = -1;
-	git_checkout_opts opts;
+	git_checkout_opts opts = GIT_CHECKOUT_OPTS_INIT;
 
 	assert(repo && target);
 	assert(reset_type == GIT_RESET_SOFT
@@ -136,7 +136,6 @@ int git_reset(
 		goto cleanup;
 	}
 
-	memset(&opts, 0, sizeof(opts));
 	opts.checkout_strategy = GIT_CHECKOUT_FORCE;
 
 	if (git_checkout_index(repo, NULL, &opts) < 0) {

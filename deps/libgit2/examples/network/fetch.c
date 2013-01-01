@@ -25,7 +25,7 @@ static void *download(void *ptr)
 
 	// Connect to the remote end specifying that we want to fetch
 	// information from it.
-	if (git_remote_connect(data->remote, GIT_DIR_FETCH) < 0) {
+	if (git_remote_connect(data->remote, GIT_DIRECTION_FETCH) < 0) {
 		data->ret = -1;
 		goto exit;
 	}
@@ -70,7 +70,7 @@ int fetch(git_repository *repo, int argc, char **argv)
 	const git_transfer_progress *stats;
 	pthread_t worker;
 	struct dl_data data;
-	git_remote_callbacks callbacks;
+	git_remote_callbacks callbacks = GIT_REMOTE_CALLBACKS_INIT;
 
 	argc = argc;
 	// Figure out whether it's a named remote or a URL
@@ -81,7 +81,6 @@ int fetch(git_repository *repo, int argc, char **argv)
 	}
 
 	// Set up the callbacks (only update_tips for now)
-	memset(&callbacks, 0, sizeof(callbacks));
 	callbacks.update_tips = &update_cb;
 	callbacks.progress = &progress_cb;
 	git_remote_set_callbacks(remote, &callbacks);

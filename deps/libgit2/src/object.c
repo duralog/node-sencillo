@@ -87,7 +87,7 @@ int git_object__from_odb_object(
 	git_object *object = NULL;
 
 	if (type != GIT_OBJ_ANY && type != odb_obj->raw.type) {
-		giterr_set(GITERR_ODB, "The requested type does not match the type in the ODB");
+		giterr_set(GITERR_INVALID, "The requested type does not match the type in the ODB");
 		return GIT_ENOTFOUND;
 	}
 
@@ -161,7 +161,7 @@ int git_object_lookup_prefix(
 		if (object != NULL) {
 			if (type != GIT_OBJ_ANY && type != object->type) {
 				git_object_free(object);
-				giterr_set(GITERR_ODB, "The given type does not match the type in ODB");
+				giterr_set(GITERR_INVALID, "The requested type does not match the type in ODB");
 				return GIT_ENOTFOUND;
 			}
 
@@ -304,12 +304,6 @@ size_t git_object__size(git_otype type)
 	return git_objects_table[type].size;
 }
 
-static int peel_error(int error, const char* msg)
-{
-	giterr_set(GITERR_INVALID, "The given object cannot be peeled - %s", msg);
-	return error;
-}
-
 static int dereference_object(git_object **dereferenced, git_object *obj)
 {
 	git_otype type = git_object_type(obj);
@@ -322,31 +316,55 @@ static int dereference_object(git_object **dereferenced, git_object *obj)
 		return git_tag_target(dereferenced, (git_tag*)obj);
 
 	case GIT_OBJ_BLOB:
-		return peel_error(GIT_ERROR, "cannot dereference blob");
+		return GIT_ENOTFOUND;
 
 	case GIT_OBJ_TREE:
-		return peel_error(GIT_ERROR, "cannot dereference tree");
+		return GIT_EAMBIGUOUS;
 
 	default:
-		return peel_error(GIT_ENOTFOUND, "unexpected object type encountered");
+		return GIT_EINVALIDSPEC;
 	}
+}
+
+static int peel_error(int error, const git_oid *oid, git_otype type)
+{
+	const char *type_name;
+	char hex_oid[GIT_OID_HEXSZ + 1];
+
+	type_name = git_object_type2string(type);
+
+	git_oid_fmt(hex_oid, oid);
+	hex_oid[GIT_OID_HEXSZ] = '\0';
+
+	giterr_set(GITERR_OBJECT, "The git_object of id '%s' can not be "
+		"successfully peeled into a %s (git_otype=%i).", hex_oid, type_name, type);
+
+	return error;
 }
 
 int git_object_peel(
 	git_object **peeled,
-	git_object *object,
+	const git_object *object,
 	git_otype target_type)
 {
 	git_object *source, *deref = NULL;
+	int error;
+
+	if (target_type != GIT_OBJ_TAG && 
+		target_type != GIT_OBJ_COMMIT && 
+		target_type != GIT_OBJ_TREE && 
+		target_type != GIT_OBJ_BLOB && 
+		target_type != GIT_OBJ_ANY)
+			return GIT_EINVALIDSPEC;
 
 	assert(object && peeled);
 
 	if (git_object_type(object) == target_type)
-		return git_object__dup(peeled, object);
+		return git_object__dup(peeled, (git_object *)object);
 
-	source = object;
+	source = (git_object *)object;
 
-	while (!dereference_object(&deref, source)) {
+	while (!(error = dereference_object(&deref, source))) {
 
 		if (source != object)
 			git_object_free(source);
@@ -371,5 +389,10 @@ int git_object_peel(
 		git_object_free(source);
 
 	git_object_free(deref);
-	return -1;
+
+	if (error)
+		error = peel_error(error, git_object_id(object), target_type);
+
+	return error;
 }
+

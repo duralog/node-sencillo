@@ -678,7 +678,7 @@ static int loose_backend__exists(git_odb_backend *backend, const git_oid *oid)
 
 struct foreach_state {
 	size_t dir_len;
-	int (*cb)(git_oid *oid, void *data);
+	git_odb_foreach_cb cb;
 	void *data;
 	int cb_error;
 };
@@ -734,7 +734,7 @@ static int foreach_cb(void *_state, git_buf *path)
 	return git_path_direach(path, foreach_object_dir_cb, state);
 }
 
-static int loose_backend__foreach(git_odb_backend *_backend, int (*cb)(git_oid *oid, void *data), void *data)
+static int loose_backend__foreach(git_odb_backend *_backend, git_odb_foreach_cb cb, void *data)
 {
 	char *objects_dir;
 	int error;
@@ -870,7 +870,6 @@ static int loose_backend__write(git_oid *oid, git_odb_backend *_backend, const v
 
 	if (git_buf_joinpath(&final_path, backend->objects_dir, "tmp_object") < 0 ||
 		git_filebuf_open(&fbuf, final_path.ptr,
-			GIT_FILEBUF_HASH_CONTENTS |
 			GIT_FILEBUF_TEMPORARY |
 			(backend->object_zlib_level << GIT_FILEBUF_DEFLATE_SHIFT)) < 0)
 	{
@@ -880,7 +879,6 @@ static int loose_backend__write(git_oid *oid, git_odb_backend *_backend, const v
 
 	git_filebuf_write(&fbuf, header, header_len);
 	git_filebuf_write(&fbuf, data, len);
-	git_filebuf_hash(oid, &fbuf);
 
 	if (object_file_name(&final_path, backend->objects_dir, oid) < 0 ||
 		git_futils_mkpath2file(final_path.ptr, GIT_OBJECT_DIR_MODE) < 0 ||
@@ -915,6 +913,7 @@ int git_odb_backend_loose(
 	backend = git__calloc(1, sizeof(loose_backend));
 	GITERR_CHECK_ALLOC(backend);
 
+	backend->parent.version = GIT_ODB_BACKEND_VERSION;
 	backend->objects_dir = git__strdup(objects_dir);
 	GITERR_CHECK_ALLOC(backend->objects_dir);
 

@@ -23,16 +23,18 @@ struct git_remote {
 	struct git_refspec fetch;
 	struct git_refspec push;
 	git_cred_acquire_cb cred_acquire_cb;
+	void *cred_acquire_payload;
 	git_transport *transport;
 	git_repository *repo;
 	git_remote_callbacks callbacks;
 	git_transfer_progress stats;
-	unsigned int need_pack:1,
-		download_tags:2, /* There are four possible values */
-		check_cert:1,
-		update_fetchhead:1;
+	unsigned int need_pack;
+	git_remote_autotag_option_t download_tags;
+	unsigned int check_cert;
+	unsigned int update_fetchhead;
 };
 
 const char* git_remote__urlfordirection(struct git_remote *remote, int direction);
+int git_remote__get_http_proxy(git_remote *remote, bool use_ssl, char **proxy_url);
 
 #endif

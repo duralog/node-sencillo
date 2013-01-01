@@ -9,6 +9,7 @@
 
 #include "indexer.h"
 #include "net.h"
+#include "types.h"
 
 /**
  * @file git2/transport.h
@@ -45,12 +46,12 @@ typedef struct git_cred_userpass_plaintext {
 /**
  * Creates a new plain-text username and password credential object.
  *
- * @param cred The newly created credential object.
+ * @param out The newly created credential object.
  * @param username The username of the credential.
  * @param password The password of the credential.
  */
 GIT_EXTERN(int) git_cred_userpass_plaintext_new(
-	git_cred **cred,
+	git_cred **out,
 	const char *username,
 	const char *password);
 
@@ -64,7 +65,8 @@ GIT_EXTERN(int) git_cred_userpass_plaintext_new(
 typedef int (*git_cred_acquire_cb)(
 	git_cred **cred,
 	const char *url,
-	int allowed_types);
+	unsigned int allowed_types,
+	void *payload);
 
 /*
  *** End interface for credentials acquisition ***
@@ -81,6 +83,7 @@ typedef enum {
 typedef void (*git_transport_message_cb)(const char *str, int len, void *data);
 
 typedef struct git_transport {
+	unsigned int version;
 	/* Set progress and error callbacks */
 	int (*set_callbacks)(struct git_transport *transport,
 		git_transport_message_cb progress_cb,
@@ -92,6 +95,7 @@ typedef struct git_transport {
 	int (*connect)(struct git_transport *transport,
 		const char *url,
 		git_cred_acquire_cb cred_acquire_cb,
+		void *cred_acquire_payload,
 		int direction,
 		int flags);
 
@@ -102,8 +106,8 @@ typedef struct git_transport {
 		git_headlist_cb list_cb,
 		void *payload);
 
-	/* Reserved until push is implemented. */
-	int (*push)(struct git_transport *transport);
+	/* Executes the push whose context is in the git_push object. */
+	int (*push)(struct git_transport *transport, git_push *push);
 
 	/* This function may be called after a successful call to connect(), when
 	 * the direction is FETCH. The function performs a negotiation to calculate
@@ -123,7 +127,7 @@ typedef struct git_transport {
 		void *progress_payload);
 
 	/* Checks to see if the transport is connected */
-	int (*is_connected)(struct git_transport *transport, int *connected);
+	int (*is_connected)(struct git_transport *transport);
 
 	/* Reads the flags value previously passed into connect() */
 	int (*read_flags)(struct git_transport *transport, int *flags);
@@ -139,16 +143,20 @@ typedef struct git_transport {
 	void (*free)(struct git_transport *transport);
 } git_transport;
 
+#define GIT_TRANSPORT_VERSION 1
+#define GIT_TRANSPORT_INIT {GIT_TRANSPORT_VERSION}
+
 /**
  * Function to use to create a transport from a URL. The transport database
  * is scanned to find a transport that implements the scheme of the URI (i.e.
  * git:// or http://) and a transport object is returned to the caller.
  *
- * @param transport The newly created transport (out)
+ * @param out The newly created transport (out)
+ * @param owner The git_remote which will own this transport
  * @param url The URL to connect to
  * @return 0 or an error code
  */
-GIT_EXTERN(int) git_transport_new(git_transport **transport, const char *url);
+GIT_EXTERN(int) git_transport_new(git_transport **out, git_remote *owner, const char *url);
 
 /**
  * Function which checks to see if a transport could be created for the
@@ -161,7 +169,7 @@ GIT_EXTERN(int) git_transport_new(git_transport **transport, const char *url);
 GIT_EXTERN(int) git_transport_valid_url(const char *url);
 
 /* Signature of a function which creates a transport */
-typedef int (*git_transport_cb)(git_transport **transport, void *param);
+typedef int (*git_transport_cb)(git_transport **out, git_remote *owner, void *param);
 
 /* Transports which come with libgit2 (match git_transport_cb). The expected
  * value for "param" is listed in-line below. */
@@ -169,35 +177,41 @@ typedef int (*git_transport_cb)(git_transport **transport, void *param);
 /**
  * Create an instance of the dummy transport.
  *
- * @param transport The newly created transport (out)
- * @param param You must pass NULL for this parameter.
+ * @param out The newly created transport (out)
+ * @param owner The git_remote which will own this transport
+ * @param payload You must pass NULL for this parameter.
  * @return 0 or an error code
  */
 GIT_EXTERN(int) git_transport_dummy(
-	git_transport **transport,
-	/* NULL */ void *param);
+	git_transport **out,
+	git_remote *owner,
+	/* NULL */ void *payload);
 
 /**
  * Create an instance of the local transport.
  *
- * @param transport The newly created transport (out)
- * @param param You must pass NULL for this parameter.
+ * @param out The newly created transport (out)
+ * @param owner The git_remote which will own this transport
+ * @param payload You must pass NULL for this parameter.
  * @return 0 or an error code
  */
 GIT_EXTERN(int) git_transport_local(
-	git_transport **transport,
-	/* NULL */ void *param);
+	git_transport **out,
+	git_remote *owner,
+	/* NULL */ void *payload);
 
 /**
  * Create an instance of the smart transport.
  *
- * @param transport The newly created transport (out)
- * @param param A pointer to a git_smart_subtransport_definition
+ * @param out The newly created transport (out)
+ * @param owner The git_remote which will own this transport
+ * @param payload A pointer to a git_smart_subtransport_definition
  * @return 0 or an error code
  */
 GIT_EXTERN(int) git_transport_smart(
-	git_transport **transport,
-	/* (git_smart_subtransport_definition *) */ void *param);
+	git_transport **out,
+	git_remote *owner,
+	/* (git_smart_subtransport_definition *) */ void *payload);
 
 /*
  *** End of base transport interface ***
@@ -221,6 +235,8 @@ GIT_EXTERN(int) git_transport_smart(
 typedef enum {
 	GIT_SERVICE_UPLOADPACK_LS = 1,
 	GIT_SERVICE_UPLOADPACK = 2,
+	GIT_SERVICE_RECEIVEPACK_LS = 3,
+	GIT_SERVICE_RECEIVEPACK = 4,
 } git_smart_service_t;
 
 struct git_smart_subtransport;
@@ -255,6 +271,14 @@ typedef struct git_smart_subtransport {
 			const char *url,
 			git_smart_service_t action);
 
+	/* Subtransports are guaranteed a call to close() between
+	 * calls to action(), except for the following two "natural" progressions
+	 * of actions against a constant URL.
+	 *
+	 * 1. UPLOADPACK_LS -> UPLOADPACK
+	 * 2. RECEIVEPACK_LS -> RECEIVEPACK */
+	int (* close)(struct git_smart_subtransport *transport);
+
 	void (* free)(struct git_smart_subtransport *transport);
 } git_smart_subtransport;
 
@@ -266,6 +290,7 @@ typedef int (*git_smart_subtransport_cb)(
 typedef struct git_smart_subtransport_definition {
 	/* The function to use to create the git_smart_subtransport */
 	git_smart_subtransport_cb callback;
+
 	/* True if the protocol is stateless; false otherwise. For example,
 	 * http:// is stateless, but git:// is not. */
 	unsigned rpc : 1;

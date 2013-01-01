@@ -23,6 +23,7 @@
 #include "git2/repository.h"
 #include "git2/revwalk.h"
 #include "git2/merge.h"
+#include "git2/graph.h"
 #include "git2/refs.h"
 #include "git2/reflog.h"
 #include "git2/revparse.h"
@@ -40,6 +41,7 @@
 #include "git2/remote.h"
 #include "git2/clone.h"
 #include "git2/checkout.h"
+#include "git2/push.h"
 
 #include "git2/attr.h"
 #include "git2/ignore.h"

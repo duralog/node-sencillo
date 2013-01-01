@@ -20,7 +20,7 @@ void test_diff_index__0(void)
 	const char *b_commit = "0017bd4ab1ec3"; /* the start */
 	git_tree *a = resolve_commit_oid_to_tree(g_repo, a_commit);
 	git_tree *b = resolve_commit_oid_to_tree(g_repo, b_commit);
-	git_diff_options opts = {0};
+	git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
 	git_diff_list *diff = NULL;
 	diff_expects exp;
 
@@ -32,10 +32,10 @@ void test_diff_index__0(void)
 
 	memset(&exp, 0, sizeof(exp));
 
-	cl_git_pass(git_diff_index_to_tree(&diff, g_repo, a, NULL, &opts));
+	cl_git_pass(git_diff_tree_to_index(&diff, g_repo, a, NULL, &opts));
 
 	cl_git_pass(git_diff_foreach(
-		diff, &exp, diff_file_fn, diff_hunk_fn, diff_line_fn));
+		diff, diff_file_cb, diff_hunk_cb, diff_line_cb, &exp));
 
 	/* to generate these values:
 	 * - cd to tests/resources/status,
@@ -60,10 +60,10 @@ void test_diff_index__0(void)
 	diff = NULL;
 	memset(&exp, 0, sizeof(exp));
 
-	cl_git_pass(git_diff_index_to_tree(&diff, g_repo, b, NULL, &opts));
+	cl_git_pass(git_diff_tree_to_index(&diff, g_repo, b, NULL, &opts));
 
 	cl_git_pass(git_diff_foreach(
-		diff, &exp, diff_file_fn, diff_hunk_fn, diff_line_fn));
+		diff, diff_file_cb, diff_hunk_cb, diff_line_cb, &exp));
 
 	/* to generate these values:
 	 * - cd to tests/resources/status,
@@ -92,11 +92,11 @@ void test_diff_index__0(void)
 }
 
 static int diff_stop_after_2_files(
-	void *cb_data,
 	const git_diff_delta *delta,
-	float progress)
+	float progress,
+	void *payload)
 {
-	diff_expects *e = cb_data;
+	diff_expects *e = payload;
 
 	GIT_UNUSED(progress);
 	GIT_UNUSED(delta);
@@ -113,7 +113,7 @@ void test_diff_index__1(void)
 	const char *b_commit = "0017bd4ab1ec3"; /* the start */
 	git_tree *a = resolve_commit_oid_to_tree(g_repo, a_commit);
 	git_tree *b = resolve_commit_oid_to_tree(g_repo, b_commit);
-	git_diff_options opts = {0};
+	git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
 	git_diff_list *diff = NULL;
 	diff_expects exp;
 
@@ -125,11 +125,11 @@ void test_diff_index__1(void)
 
 	memset(&exp, 0, sizeof(exp));
 
-	cl_git_pass(git_diff_index_to_tree(&diff, g_repo, a, NULL, &opts));
+	cl_git_pass(git_diff_tree_to_index(&diff, g_repo, a, NULL, &opts));
 
 	cl_assert_equal_i(
 		GIT_EUSER,
-		git_diff_foreach(diff, &exp, diff_stop_after_2_files, NULL, NULL)
+		git_diff_foreach(diff, diff_stop_after_2_files, NULL, NULL, &exp)
 	);
 
 	cl_assert_equal_i(2, exp.files);
@@ -140,3 +140,28 @@ void test_diff_index__1(void)
 	git_tree_free(a);
 	git_tree_free(b);
 }
+
+void test_diff_index__checks_options_version(void)
+{
+	const char *a_commit = "26a125ee1bf";
+	git_tree *a = resolve_commit_oid_to_tree(g_repo, a_commit);
+	git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
+	git_diff_list *diff = NULL;
+	const git_error *err;
+
+	opts.version = 0;
+	cl_git_fail(git_diff_tree_to_index(&diff, g_repo, a, NULL, &opts));
+	err = giterr_last();
+	cl_assert_equal_i(GITERR_INVALID, err->klass);
+	cl_assert_equal_p(diff, NULL);
+
+	giterr_clear();
+	opts.version = 1024;
+	cl_git_fail(git_diff_tree_to_index(&diff, g_repo, a, NULL, &opts));
+	err = giterr_last();
+	cl_assert_equal_i(GITERR_INVALID, err->klass);
+	cl_assert_equal_p(diff, NULL);
+
+	git_tree_free(a);
+}
+

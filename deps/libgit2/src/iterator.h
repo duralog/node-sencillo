@@ -26,34 +26,38 @@ typedef enum {
 	GIT_ITERATOR_SPOOLANDSORT = 4
 } git_iterator_type_t;
 
-struct git_iterator {
-	git_iterator_type_t type;
-	char *start;
-	char *end;
+typedef struct {
 	int (*current)(git_iterator *, const git_index_entry **);
 	int (*at_end)(git_iterator *);
 	int (*advance)(git_iterator *, const git_index_entry **);
 	int (*seek)(git_iterator *, const char *prefix);
-	int (*reset)(git_iterator *);
+	int (*reset)(git_iterator *, const char *start, const char *end);
 	void (*free)(git_iterator *);
-	unsigned int ignore_case:1;
+} git_iterator_callbacks;
+
+struct git_iterator {
+	git_iterator_type_t type;
+	git_iterator_callbacks *cb;
+	git_repository *repo;
+	char *start;
+	char *end;
+	bool ignore_case;
 };
 
 extern int git_iterator_for_nothing(git_iterator **iter);
 
 extern int git_iterator_for_tree_range(
-	git_iterator **iter, git_repository *repo, git_tree *tree,
+	git_iterator **iter, git_tree *tree,
 	const char *start, const char *end);
 
 GIT_INLINE(int) git_iterator_for_tree(
-	git_iterator **iter, git_repository *repo, git_tree *tree)
+	git_iterator **iter, git_tree *tree)
 {
-	return git_iterator_for_tree_range(iter, repo, tree, NULL, NULL);
+	return git_iterator_for_tree_range(iter, tree, NULL, NULL);
 }
 
 extern int git_iterator_for_index_range(
-	git_iterator **iter, git_index *index,
-	const char *start, const char *end);
+	git_iterator **iter, git_index *index, const char *start, const char *end);
 
 GIT_INLINE(int) git_iterator_for_index(
 	git_iterator **iter, git_index *index)
@@ -81,17 +85,13 @@ GIT_INLINE(int) git_iterator_for_workdir(
 	return git_iterator_for_workdir_range(iter, repo, NULL, NULL);
 }
 
-extern int git_iterator_spoolandsort_range(
-	git_iterator **iter, git_iterator *towrap,
-	git_vector_cmp comparer, bool ignore_case,
-	const char *start, const char *end);
+/* Spool all iterator values, resort with alternative ignore_case value
+ * and replace callbacks with spoolandsort alternates.
+ */
+extern int git_iterator_spoolandsort_push(git_iterator *iter, bool ignore_case);
 
-GIT_INLINE(int) git_iterator_spoolandsort(
-	git_iterator **iter, git_iterator *towrap,
-	git_vector_cmp comparer, bool ignore_case)
-{
-	return git_iterator_spoolandsort_range(iter, towrap, comparer, ignore_case, NULL, NULL);
-}
+/* Restore original callbacks - not required in most circumstances */
+extern void git_iterator_spoolandsort_pop(git_iterator *iter);
 
 /* Entry is not guaranteed to be fully populated.  For a tree iterator,
  * we will only populate the mode, oid and path, for example.  For a workdir
@@ -104,29 +104,30 @@ GIT_INLINE(int) git_iterator_spoolandsort(
 GIT_INLINE(int) git_iterator_current(
 	git_iterator *iter, const git_index_entry **entry)
 {
-	return iter->current(iter, entry);
+	return iter->cb->current(iter, entry);
 }
 
 GIT_INLINE(int) git_iterator_at_end(git_iterator *iter)
 {
-	return iter->at_end(iter);
+	return iter->cb->at_end(iter);
 }
 
 GIT_INLINE(int) git_iterator_advance(
 	git_iterator *iter, const git_index_entry **entry)
 {
-	return iter->advance(iter, entry);
+	return iter->cb->advance(iter, entry);
 }
 
 GIT_INLINE(int) git_iterator_seek(
 	git_iterator *iter, const char *prefix)
 {
-	return iter->seek(iter, prefix);
+	return iter->cb->seek(iter, prefix);
 }
 
-GIT_INLINE(int) git_iterator_reset(git_iterator *iter)
+GIT_INLINE(int) git_iterator_reset(
+	git_iterator *iter, const char *start, const char *end)
 {
-	return iter->reset(iter);
+	return iter->cb->reset(iter, start, end);
 }
 
 GIT_INLINE(void) git_iterator_free(git_iterator *iter)
@@ -134,7 +135,7 @@ GIT_INLINE(void) git_iterator_free(git_iterator *iter)
 	if (iter == NULL)
 		return;
 
-	iter->free(iter);
+	iter->cb->free(iter);
 
 	git__free(iter->start);
 	git__free(iter->end);
@@ -147,6 +148,11 @@ GIT_INLINE(void) git_iterator_free(git_iterator *iter)
 GIT_INLINE(git_iterator_type_t) git_iterator_type(git_iterator *iter)
 {
 	return iter->type;
+}
+
+GIT_INLINE(git_repository *) git_iterator_owner(git_iterator *iter)
+{
+	return iter->repo;
 }
 
 extern int git_iterator_current_tree_entry(

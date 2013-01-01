@@ -14,6 +14,7 @@
 #include "git2/stash.h"
 #include "git2/status.h"
 #include "git2/checkout.h"
+#include "signature.h"
 
 static int create_error(int error, const char *msg)
 {
@@ -56,7 +57,7 @@ static int append_abbreviated_oid(git_buf *out, const git_oid *b_commit)
 static int append_commit_description(git_buf *out, git_commit* commit)
 {
 	const char *message;
-	int pos = 0, len;
+	size_t pos = 0, len;
 
 	if (append_abbreviated_oid(out, git_commit_id(commit)) < 0)
 		return -1;
@@ -98,7 +99,7 @@ static int retrieve_base_commit_and_message(
 			"%s: ",
 			git_reference_name(head) + strlen(GIT_REFS_HEADS_DIR));
 
-	if (git_commit_lookup(b_commit, repo, git_reference_oid(head)) < 0)
+	if (git_commit_lookup(b_commit, repo, git_reference_target(head)) < 0)
 		goto cleanup;
 
 	if (append_commit_description(stash_message, *b_commit) < 0)
@@ -169,12 +170,12 @@ struct cb_data {
 };
 
 static int update_index_cb(
-	void *cb_data,
 	const git_diff_delta *delta,
-	float progress)
+	float progress,
+	void *payload)
 {
 	int pos;
-	struct cb_data *data = (struct cb_data *)cb_data;
+	struct cb_data *data = (struct cb_data *)payload;
 
 	GIT_UNUSED(progress);
 
@@ -229,7 +230,7 @@ static int build_untracked_tree(
 {
 	git_tree *i_tree = NULL;
 	git_diff_list *diff = NULL;
-	git_diff_options opts = {0};
+	git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
 	struct cb_data data = {0};
 	int error = -1;
 
@@ -250,10 +251,10 @@ static int build_untracked_tree(
 	if (git_commit_tree(&i_tree, i_commit) < 0)
 		goto cleanup;
 
-	if (git_diff_workdir_to_tree(&diff, git_index_owner(index), i_tree, &opts) < 0)
+	if (git_diff_tree_to_workdir(&diff, git_index_owner(index), i_tree, &opts) < 0)
 		goto cleanup;
 
-	if (git_diff_foreach(diff, &data, update_index_cb, NULL, NULL) < 0)
+	if (git_diff_foreach(diff, update_index_cb, NULL, NULL, &data) < 0)
 		goto cleanup;
 
 	if (build_tree_from_index(tree_out, index) < 0)
@@ -315,17 +316,17 @@ static int build_workdir_tree(
 	git_repository *repo = git_index_owner(index);
 	git_tree *b_tree = NULL;
 	git_diff_list *diff = NULL, *diff2 = NULL;
-	git_diff_options opts = {0};
+	git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
 	struct cb_data data = {0};
 	int error = -1;
 
 	if (git_commit_tree(&b_tree, b_commit) < 0)
 		goto cleanup;
 
-	if (git_diff_index_to_tree(&diff, repo, b_tree, NULL, &opts) < 0)
+	if (git_diff_tree_to_index(&diff, repo, b_tree, NULL, &opts) < 0)
 		goto cleanup;
 
-	if (git_diff_workdir_to_index(&diff2, repo, NULL, &opts) < 0)
+	if (git_diff_index_to_workdir(&diff2, repo, NULL, &opts) < 0)
 		goto cleanup;
 
 	if (git_diff_merge(diff, diff2) < 0)
@@ -334,7 +335,7 @@ static int build_workdir_tree(
 	data.index = index;
 	data.include_changed = true;
 
-	if (git_diff_foreach(diff, &data, update_index_cb, NULL, NULL) < 0)
+	if (git_diff_foreach(diff, update_index_cb, NULL, NULL, &data) < 0)
 		goto cleanup;
 
 	if (build_tree_from_index(tree_out, index) < 0)
@@ -436,7 +437,7 @@ static int update_reflog(
 	git_reflog *reflog = NULL;
 	int error;
 
-	if ((error = git_reference_create_oid(&stash, repo, GIT_REFS_STASH_FILE, w_commit_oid, 1)) < 0)
+	if ((error = git_reference_create(&stash, repo, GIT_REFS_STASH_FILE, w_commit_oid, 1)) < 0)
 		goto cleanup;
 
 	if ((error = git_reflog_read(&reflog, stash)) < 0)
@@ -471,9 +472,8 @@ static int ensure_there_are_changes_to_stash(
 	bool include_ignored_files)
 {
 	int error;
-	git_status_options opts;
+	git_status_options opts = GIT_STATUS_OPTIONS_INIT;
 
-	memset(&opts, 0, sizeof(opts));
 	opts.show  = GIT_STATUS_SHOW_INDEX_AND_WORKDIR;
 	if (include_untracked_files)
 		opts.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED |
@@ -498,9 +498,7 @@ static int reset_index_and_workdir(
 	git_commit *commit,
 	bool remove_untracked)
 {
-	git_checkout_opts opts;
-
-	memset(&opts, 0, sizeof(git_checkout_opts));
+	git_checkout_opts opts = GIT_CHECKOUT_OPTS_INIT;
 
 	opts.checkout_strategy =
 		GIT_CHECKOUT_UPDATE_MODIFIED | GIT_CHECKOUT_UPDATE_UNTRACKED;
@@ -579,7 +577,7 @@ cleanup:
 
 int git_stash_foreach(
 	git_repository *repo,
-	stash_cb callback,
+	git_stash_cb callback,
 	void *payload)
 {
 	git_reference *stash;
@@ -603,8 +601,8 @@ int git_stash_foreach(
 		entry = git_reflog_entry_byindex(reflog, i);
 		
 		if (callback(i,
-			git_reflog_entry_msg(entry),
-			git_reflog_entry_oidnew(entry),
+			git_reflog_entry_message(entry),
+			git_reflog_entry_id_new(entry),
 			payload)) {
 				error = GIT_EUSER;
 				goto cleanup;

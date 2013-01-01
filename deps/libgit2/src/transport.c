@@ -53,15 +53,32 @@ static int transport_find_fn(const char *url, git_transport_cb *callback, void *
 			definition = definition_iter;
 	}
 
-	if (!definition) {
-		/* still here? Check to see if the path points to a file on the local file system */
-		if ((git_path_exists(url) == 0) && git_path_isdir(url))
-			definition = &local_transport_definition;
+#ifdef GIT_WIN32
+	/* On Windows, it might not be possible to discern between absolute local
+	 * and ssh paths - first check if this is a valid local path that points
+	 * to a directory and if so assume local path, else assume SSH */
 
-		/* It could be a SSH remote path. Check to see if there's a : */
-		if (strrchr(url, ':'))
-			definition = &dummy_transport_definition; /* SSH is an unsupported transport mechanism in this version of libgit2 */
-	}
+	/* Check to see if the path points to a file on the local file system */
+	if (!definition && git_path_exists(url) && git_path_isdir(url))
+		definition = &local_transport_definition;
+
+	/* It could be a SSH remote path. Check to see if there's a :
+	 * SSH is an unsupported transport mechanism in this version of libgit2 */
+	if (!definition && strrchr(url, ':'))
+		definition = &dummy_transport_definition; 
+#else
+	/* For other systems, perform the SSH check first, to avoid going to the
+	 * filesystem if it is not necessary */
+
+	/* It could be a SSH remote path. Check to see if there's a :
+	 * SSH is an unsupported transport mechanism in this version of libgit2 */
+	if (!definition && strrchr(url, ':'))
+		definition = &dummy_transport_definition;
+
+	/* Check to see if the path points to a file on the local file system */
+	if (!definition && git_path_exists(url) && git_path_isdir(url))
+		definition = &local_transport_definition;
+#endif
 
 	if (!definition)
 		return -1;
@@ -76,15 +93,16 @@ static int transport_find_fn(const char *url, git_transport_cb *callback, void *
  * Public API *
  **************/
 
-int git_transport_dummy(git_transport **transport, void *param)
+int git_transport_dummy(git_transport **transport, git_remote *owner, void *param)
 {
 	GIT_UNUSED(transport);
+	GIT_UNUSED(owner);
 	GIT_UNUSED(param);
 	giterr_set(GITERR_NET, "This transport isn't implemented. Sorry");
 	return -1;
 }
 
-int git_transport_new(git_transport **out, const char *url)
+int git_transport_new(git_transport **out, git_remote *owner, const char *url)
 {
 	git_transport_cb fn;
 	git_transport *transport;
@@ -96,7 +114,7 @@ int git_transport_new(git_transport **out, const char *url)
 		return -1;
 	}
 
-	error = fn(&transport, param);
+	error = fn(&transport, owner, param);
 	if (error < 0)
 		return error;
 
