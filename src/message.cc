@@ -23,55 +23,43 @@
  * THE SOFTWARE.
  */
 
+#include "message.h"
+
 #include "git2.h"
 
-#include "v8u.hpp"
-#include "version.hpp"
-
-#include "error.h"
-#include "oid.h"
-#include "object.h"
-#include "message.h"
-#include "repository.h"
-
-#define GITTEH_VERSION 0,1,0
-
-using v8u::Symbol;
-using v8u::Version;
-using v8u::Int;
-using v8u::Func;
 
 namespace gitteh {
 
-inline v8::Local<v8::Object> libgit2Version() {
-  int major, minor, revision;
-  git_libgit2_version(&major, &minor, &revision);
-  Version* v = new Version(major, minor, revision);
-  return v->Wrapped();
-}
-
-NODE_DEF_MAIN() {
-  // Version class & hash
-  Version::init(target);
-  v8::Local<v8::Object> versions = v8u::Obj();
-  versions->Set(Symbol("gitteh"), (new Version(GITTEH_VERSION))->Wrapped());
-  versions->Set(Symbol("libgit2"), libgit2Version());
-  target->Set(Symbol("versions"), versions);
+// another approach would be to call prettify() with no buffer,
+// allocate the size and call again, but this is faster
+V8_CB(Prettify) {
   
-  // Other LibGit2 info
-  target->Set(Symbol("capabilities"), Int(git_libgit2_capabilities()));
+  // Allocate
+  v8::String::Utf8Value msg (args[0]);
+  int len = msg.length();
+  int out_len = len;
+  char* in  = new (std::nothrow) char [++out_len]; // one more for the trailing \0
+  if (in == NULL) V8_THROW(v8u::Err("Couldn't allocate memory."));
+  char* out = new (std::nothrow) char [++out_len]; // another for the trailing \n
+  if (out == NULL) {
+    delete[] in;
+    V8_THROW(v8u::Err("Couldn't allocate memory."));
+  }
 
-  //FLAG: capabilities
-  target->Set(Symbol("CAP_THREADS"), Int(GIT_CAP_THREADS));
-  target->Set(Symbol("CAP_HTTPS"), Int(GIT_CAP_HTTPS));
+  // Prepare input
+  memcpy(in, *msg, len);
+  for (int i=0; i<len; i++)
+    if (in[i] == 0) in[i] = 0x20;   // replace \0 with space
+  in[len] = 0;                      // set last trailing \0
 
-  // Message utilities
-  target->Set(Symbol("prettify"), Func(Prettify)->GetFunction());
+  // Call & return
+  int final_len = git_message_prettify(out, out_len, in, v8u::Bool(args[1]));
+  delete[] in;
+  v8::Local<v8::String> ret = v8u::Str(out, final_len-1);
+  delete[] out;
+  V8_RET(ret);
 
-  // Classes initialization
-  Oid::init(target);
-  GitObject::init(target);
-  Repository::init(target);
-} NODE_DEF_MAIN_END(gitteh)
+} V8_CB_END()
 
 };
+

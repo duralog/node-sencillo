@@ -23,55 +23,46 @@
  * THE SOFTWARE.
  */
 
+#ifndef GITTEH_OID_H
+#define	GITTEH_OID_H
+
 #include "git2.h"
 
 #include "v8u.hpp"
-#include "version.hpp"
-
-#include "error.h"
-#include "oid.h"
-#include "object.h"
-#include "message.h"
-#include "repository.h"
-
-#define GITTEH_VERSION 0,1,0
-
-using v8u::Symbol;
-using v8u::Version;
-using v8u::Int;
-using v8u::Func;
 
 namespace gitteh {
 
-inline v8::Local<v8::Object> libgit2Version() {
-  int major, minor, revision;
-  git_libgit2_version(&major, &minor, &revision);
-  Version* v = new Version(major, minor, revision);
-  return v->Wrapped();
-}
+#define GITTEH_OID_REPR "<Oid %s>"
+#define GITTEH_OID_REPR_HEX_LEN 10
+#define GITTEH_OID_REPR_LEN 17 //+1 for the terminating NUL
 
-NODE_DEF_MAIN() {
-  // Version class & hash
-  Version::init(target);
-  v8::Local<v8::Object> versions = v8u::Obj();
-  versions->Set(Symbol("gitteh"), (new Version(GITTEH_VERSION))->Wrapped());
-  versions->Set(Symbol("libgit2"), libgit2Version());
-  target->Set(Symbol("versions"), versions);
+class Oid : public node::ObjectWrap {
+public:
+  Oid(const git_oid& other);
+  Oid();
+  ~Oid();
+  static v8::Persistent<v8::FunctionTemplate> prim;
+  V8_SCTOR();
   
-  // Other LibGit2 info
-  target->Set(Symbol("capabilities"), Int(git_libgit2_capabilities()));
-
-  //FLAG: capabilities
-  target->Set(Symbol("CAP_THREADS"), Int(GIT_CAP_THREADS));
-  target->Set(Symbol("CAP_HTTPS"), Int(GIT_CAP_HTTPS));
-
-  // Message utilities
-  target->Set(Symbol("prettify"), Func(Prettify)->GetFunction());
-
-  // Classes initialization
-  Oid::init(target);
-  GitObject::init(target);
-  Repository::init(target);
-} NODE_DEF_MAIN_END(gitteh)
+  static V8_SCB(ToString);
+//  static V8_SCB(ToRaw);
+  static V8_SCB(ToPath);
+  //TODO: Shortener
+  
+  static V8_SCB(IsEmpty);
+  static V8_SCB(Compare);
+  static V8_SCB(Equals);
+  
+  static V8_SCB(Inspect);
+  
+  static V8_SCB(Parse);
+  
+  NODE_STYPE(Oid);
+protected:
+  git_oid oid;
+};
 
 };
+
+#endif	/* GITTEH_OID_H */
+
