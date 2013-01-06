@@ -2,8 +2,15 @@
   "targets": [
     {
       "target_name": "gitteh",
-      "sources": [ "src/binding.cc" ],
       "include_dirs": [ 'deps/libgit2/include' ],
+      "sources": [ "src/binding.cc"
+      , "src/common.cc"
+      , "src/error.cc"
+      , "src/message.cc"
+      , "src/object.cc"
+      , "src/oid.cc"
+      , "src/repository.cc"
+      ],
 
       "libraries": [
         "<(module_root_dir)/deps/libgit2/build/libgit2.a"
