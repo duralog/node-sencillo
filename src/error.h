@@ -23,55 +23,29 @@
  * THE SOFTWARE.
  */
 
+#ifndef GITTEH_ERROR_H
+#define	GITTEH_ERROR_H
+
 #include "git2.h"
 
 #include "v8u.hpp"
-#include "version.hpp"
-
-#include "error.h"
-#include "oid.h"
-#include "object.h"
-#include "message.h"
-#include "repository.h"
-
-#define GITTEH_VERSION 0,1,0
-
-using v8u::Symbol;
-using v8u::Version;
-using v8u::Int;
-using v8u::Func;
 
 namespace gitteh {
 
-inline v8::Local<v8::Object> libgit2Version() {
-  int major, minor, revision;
-  git_libgit2_version(&major, &minor, &revision);
-  Version* v = new Version(major, minor, revision);
-  return v->Wrapped();
-}
-
-NODE_DEF_MAIN() {
-  // Version class & hash
-  Version::init(target);
-  v8::Local<v8::Object> versions = v8u::Obj();
-  versions->Set(Symbol("gitteh"), (new Version(GITTEH_VERSION))->Wrapped());
-  versions->Set(Symbol("libgit2"), libgit2Version());
-  target->Set(Symbol("versions"), versions);
+//  class GitObject : public node::ObjectWrap {
+//  public:
+//    
+//  protected:
+//    git_object obj;
+//  };
   
-  // Other LibGit2 info
-  target->Set(Symbol("capabilities"), Int(git_libgit2_capabilities()));
-
-  //FLAG: capabilities
-  target->Set(Symbol("CAP_THREADS"), Int(GIT_CAP_THREADS));
-  target->Set(Symbol("CAP_HTTPS"), Int(GIT_CAP_HTTPS));
-
-  // Message utilities
-  target->Set(Symbol("prettify"), Func(Prettify)->GetFunction());
-
-  // Classes initialization
-  Oid::init(target);
-  GitObject::init(target);
-  Repository::init(target);
-} NODE_DEF_MAIN_END(gitteh)
+/*
+ * Check the status returned by a libgit2 function,
+ * throw if error.
+ */
+void check(int status);
 
 };
+
+#endif	/* GITTEH_ERROR_H */
+
