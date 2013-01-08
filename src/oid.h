@@ -43,20 +43,21 @@ public:
   ~Oid();
   static v8::Persistent<v8::FunctionTemplate> prim;
   V8_SCTOR();
-  
+
   static V8_SCB(ToString);
 //  static V8_SCB(ToRaw);
   static V8_SCB(ToPath);
   //TODO: Shortener
-  
-  static V8_SCB(IsEmpty);
+
   static V8_SCB(Compare);
   static V8_SCB(Equals);
-  
+
   static V8_SCB(Inspect);
-  
+
   static V8_SCB(Parse);
-  
+
+  V8_SGET(IsEmpty);
+
   NODE_STYPE(Oid);
 protected:
   git_oid oid;
