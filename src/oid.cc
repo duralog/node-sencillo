@@ -30,6 +30,11 @@
 #include "error.h"
 
 
+using v8::Handle;
+using v8::Local;
+using v8u::Symbol;
+using v8u::Func;
+
 namespace gitteh {
 
 Oid::Oid(const git_oid& other) {
@@ -70,10 +75,6 @@ V8_CB(Oid::ToPath) {
 } V8_CB_END()
 //TODO: Shortener
 
-V8_CB(Oid::IsEmpty) {
-  Oid* inst = Unwrap(args.This());
-  V8_RET( v8u::Bool(git_oid_iszero(&inst->oid)) );
-} V8_CB_END()
 V8_CB(Oid::Compare) {
   Oid* inst = Unwrap(args.This());
   if (!(args[0]->IsObject() && HasInstance(v8u::Obj(args[0]))))
@@ -111,6 +112,12 @@ V8_CB(Oid::Parse) {
   V8_RET(ret);
 } V8_CB_END()
 
+V8_ESGET(Oid, IsEmpty) {
+  V8_M_UNWRAP(Oid, info.Holder());
+  return v8u::Bool(git_oid_iszero(&inst->oid));
+}
+//FIXME: length
+
 NODE_ETYPE(Oid, "Oid") {
   V8_DEF_CB("toString", ToString);
   //V8_DEF_CB("toRaw", ToRaw);
@@ -118,12 +125,20 @@ NODE_ETYPE(Oid, "Oid") {
 
   V8_DEF_CB("compare", Compare);
   V8_DEF_CB("equals", Equals);
-  V8_DEF_CB("isEmpty", IsEmpty);
 
   V8_DEF_CB("inspect", Inspect);
 
-  v8::Local<v8::Function> func = templ->GetFunction();
-  func->Set(v8u::Symbol("parse"), v8u::Func(Parse)->GetFunction());
+  V8_DEF_GET("empty", IsEmpty);
+
+  Local<v8::Function> func = templ->GetFunction();
+  func->Set(Symbol("parse"), Func(Parse)->GetFunction());
+
+  Handle<v8::Value> args [1] = {v8::External::New(NULL)};
+  Local<v8::Object> zeroh = func->NewInstance(1,args);
+  Oid* zero = new Oid;
+  zero->Wrap(zeroh);
+  memset(zero->oid.id, 0, GIT_OID_RAWSZ);
+  func->Set(Symbol("zero"), zeroh);
 } NODE_TYPE_END()
 V8_POST_TYPE(Oid)
 
