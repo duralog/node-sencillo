@@ -30,11 +30,12 @@
 
 namespace gitteh {
 
+// prepare input for processing
 inline void prepare(const char* in, char* out, int& len) {
-  memcpy(out, in, len);
+  int o = 0;
   for (int i=0; i<len; i++)
-    if (out[i] == 0) out[i] = 0x20;   // replace \0 with space
-  out[len] = 0;                      // set last trailing \0
+    if (in[i] != 0) out[o++] = in[i]; // skip any \0
+  out[o] = 0;                        // set last trailing \0
 }
 
 // another approach would be to call prettify() with no buffer,
