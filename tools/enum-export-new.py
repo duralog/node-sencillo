@@ -10,18 +10,21 @@
 from sys import stdin, stdout, stderr, argv
 
 # ADJUST SETTINGS:
-strip = "GIT_REPOSITORY"
-hash = argv[1]
-hash_sym = argv[2] if (len(argv) > 2) else None
+strip = "GIT"
+if argv[1] not in ("", "-"):
+  strip += '_'+argv[1]
+hash = argv[2]
+hash_sym = argv[3] if (len(argv) > 3) else None
+hash_var = argv[4] if (len(argv) > 4) else None
 
 import re
-stderr.write('\n'.join(['Strip: {}', 'Hash: {}', 'Hash name: {}']).format(strip, hash, hash_sym or '<auto>')+'\n')
+stderr.write('\n'.join(['Strip: {}', 'Hash: {}', 'Hash name: {}', 'Hash C var: {}']).format(strip, hash, hash_sym or '<auto>', hash_var or '<auto>')+'\n\n')
 
 # CODE SETTINGS:
 indent = 2
 pre_pattern = 'Local<v8::Object> {hash_var} = v8u::Obj();'
 out_pattern = '{hash_var}->Set(Symbol("{js_sub_sym}"), Int({c_sym}));'
-post_pattern = 'func->Set(Symbol("{hash_sym}", {hash_var})'
+post_pattern = 'func->Set(Symbol("{hash_sym}"), {hash_var});'
 
 
 # Prepare patterns
@@ -44,12 +47,12 @@ def capital(case):
   return ret
 
 if not hash_sym: hash_sym = capital(hash)
-hash_var = hash_sym[0].lower() + hash_sym[1:] + 'Hash'
+if not hash_var: hash_var = hash_sym[0].lower() + hash_sym[1:] + 'Hash'
 
 strip += '_'; hash += '_'
 
 excl = re.compile('^\s*$')
-patt = re.compile('^\s*(\w+)(\s*=.+)?\s*,\s*$')
+patt = re.compile('^\s*(\w+)(\s*=.+)?\s*,?\s*$')
 
 # Begin processing
 output=pre_pattern.format(hash_var=hash_var)
@@ -75,4 +78,4 @@ except EOFError, e: pass
 #  print 'Error: ' + e
 
 output += post_pattern.format(hash_var=hash_var, hash_sym=hash_sym)
-stdout.write(output)
+stdout.write('\n'+output+'\n')
