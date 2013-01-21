@@ -40,10 +40,11 @@ using v8u::Symbol;
 using v8u::Version;
 using v8u::Int;
 using v8u::Func;
+using v8::Local;
 
 namespace gitteh {
 
-inline v8::Local<v8::Object> libgit2Version() {
+inline Local<v8::Object> libgit2Version() {
   int major, minor, revision;
   git_libgit2_version(&major, &minor, &revision);
   Version* v = new Version(major, minor, revision);
@@ -53,7 +54,7 @@ inline v8::Local<v8::Object> libgit2Version() {
 NODE_DEF_MAIN() {
   // Version class & hash
   Version::init(target);
-  v8::Local<v8::Object> versions = v8u::Obj();
+  Local<v8::Object> versions = v8u::Obj();
   versions->Set(Symbol("gitteh"), (new Version(GITTEH_VERSION))->Wrapped());
   versions->Set(Symbol("libgit2"), libgit2Version());
   target->Set(Symbol("versions"), versions);
@@ -61,9 +62,11 @@ NODE_DEF_MAIN() {
   // Other LibGit2 info
   target->Set(Symbol("capabilities"), Int(git_libgit2_capabilities()));
 
-  //FLAG: capabilities
-  target->Set(Symbol("CAP_THREADS"), Int(GIT_CAP_THREADS));
-  target->Set(Symbol("CAP_HTTPS"), Int(GIT_CAP_HTTPS));
+  //FLAG: capabilities -- CAP
+  Local<v8::Object> capHash = v8u::Obj();
+  capHash->Set(Symbol("THREADS"), Int(GIT_CAP_THREADS));
+  capHash->Set(Symbol("HTTPS"), Int(GIT_CAP_HTTPS));
+  target->Set(Symbol("Capability"), capHash);
 
   // Message utilities
   target->Set(Symbol("prettify"), Func(Prettify)->GetFunction());
