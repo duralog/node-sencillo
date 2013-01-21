@@ -30,6 +30,13 @@
 
 namespace gitteh {
 
+inline void prepare(const char* in, char* out, int& len) {
+  memcpy(out, in, len);
+  for (int i=0; i<len; i++)
+    if (out[i] == 0) out[i] = 0x20;   // replace \0 with space
+  out[len] = 0;                      // set last trailing \0
+}
+
 // another approach would be to call prettify() with no buffer,
 // allocate the size and call again, but this is faster
 V8_CB(Prettify) {
@@ -47,10 +54,7 @@ V8_CB(Prettify) {
   }
 
   // Prepare input
-  memcpy(in, *msg, len);
-  for (int i=0; i<len; i++)
-    if (in[i] == 0) in[i] = 0x20;   // replace \0 with space
-  in[len] = 0;                      // set last trailing \0
+  prepare(*msg, in, len);
 
   // Call & return
   int final_len = git_message_prettify(out, out_len, in, v8u::Bool(args[1]));
