@@ -55,6 +55,7 @@ public:
   static V8_SCB(Inspect);
 
   static V8_SCB(Parse);
+  static V8_SCB(ParseArray);
 
   V8_SGET(IsEmpty);
 

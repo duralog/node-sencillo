@@ -112,6 +112,31 @@ V8_CB(Oid::Parse) {
   V8_RET(ret);
 } V8_CB_END()
 
+V8_CB(Oid::ParseArray) {
+  if (!args[0]->IsArray()) V8_THROW(
+          v8u::TypeErr("If you read the name of this method, "
+                       "you'll probably notice an ARRAY is required "
+                       "as first argument.")
+  );
+  Local<v8::Array> input = v8u::Arr(args[0]);
+  int len = input->Length();
+  Local<v8::Array> output = v8u::Arr(len);
+  
+  for (int i = 0; i < len; i++) {
+    v8::String::Utf8Value str (input->Get(i));
+    
+    Oid* inst = new Oid;
+    v8::Local<v8::Object> ret = inst->Wrapped();
+
+    if (*str == NULL) check(git_oid_fromstrn(&inst->oid, "", 0));
+    else check(git_oid_fromstrn(&inst->oid, *str, str.length()));
+    
+    output->Set(i, ret);
+  }
+
+  V8_RET(output);
+} V8_CB_END()
+
 V8_ESGET(Oid, IsEmpty) {
   V8_M_UNWRAP(Oid, info.Holder());
   return v8u::Bool(git_oid_iszero(&inst->oid));
@@ -132,6 +157,7 @@ NODE_ETYPE(Oid, "Oid") {
 
   Local<v8::Function> func = templ->GetFunction();
   func->Set(Symbol("parse"), Func(Parse)->GetFunction());
+  func->Set(Symbol("parseArray"), Func(ParseArray)->GetFunction());
 
   Handle<v8::Value> args [1] = {v8::External::New(NULL)};
   Local<v8::Object> zeroh = func->NewInstance(1,args);
