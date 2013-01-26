@@ -40,9 +40,10 @@
     "url": "https://github.com/libgit2/node-gitteh/issues"
   },
   
-  "main": "build/Release/gitteh",
+  "main": "lib/index.js",
   "directories": {
     "src": "src",
+    "lib": "lib",
     "doc": "doc",
     "example": "examples"
   },
