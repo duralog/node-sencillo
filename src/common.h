@@ -39,6 +39,41 @@ namespace gitteh {
 // Use on abstract callbacks
 V8_SCB(_isAbstract);
 
+
+// Conversion and escaping goodies
+//buildPathList
+
+
+// Macros for asynchronous work
+// --based on node-lame's code
+
+//Unwrapping and starting work statement-macros
+#define GITTEH_WORK_UNWRAP(IDENTIFIER)                                         \
+  IDENTIFIER##_req* r = (IDENTIFIER##_req*)req->data
+#define GITTEH_WORK_QUEUE(IDENTIFIER)                                          \
+  r->req.data = r;                                                             \
+  return v8::Integer::New(uv_queue_work(uv_default_loop(), &r->req,            \
+                                        IDENTIFIER##_work, IDENTIFIER##_after))
+
+
+//Work callbacks block-macros
+#define GITTEH_WORK(IDENTIFIER)                                                \
+  void IDENTIFIER##_work(uv_work_t *req) {                                     \
+    GITTEH_WORK_UNWRAP(IDENTIFIER);
+
+#define GITTEH_WORK_AFTER(IDENTIFIER) }                                        \
+  void IDENTIFIER##_after(uv_work_t *req) {                                    \
+    v8::HandleScope scope;                                                     \
+    GITTEH_WORK_UNWRAP(IDENTIFIER);
+
+#define GITTEH_WORK_END(ARGC)                                                  \
+  v8::TryCatch try_catch;                                                      \
+  r->cb->Call(v8::Context::GetCurrent()->Global(), ARGC, argv);                \
+  r->cb.Dispose();                                                             \
+  delete r;                                                                    \
+  if (try_catch.HasCaught()) node::FatalException(try_catch);                  \
+}
+
 };
 
 #endif	/* GITTEH_COMMON_H */
