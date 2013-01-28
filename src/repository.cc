@@ -25,12 +25,16 @@
 
 #include "repository.h"
 
+#include "error.h"
+
 
 using v8u::Int;
 using v8u::Symbol;
 using v8u::Bool;
 using v8u::Func;
 using v8::Local;
+using v8::Persistent;
+using v8::Function;
 
 namespace gitteh {
 
@@ -41,10 +45,100 @@ Repository::~Repository() {
 
 V8_ESCTOR(Repository) { V8_CTOR_NO_JS }
 
+// TODO: methods go here
+
+// STATIC / FACTORY METHODS
+
+//// Repository.discover(...)
+
+struct repo_discover_req {
+  bool across_fs;
+  v8::String::Utf8Value* start;
+  char* ceiling_dirs;
+  char* output;
+  error_info err;
+
+  Persistent<Function> cb;
+  uv_work_t req;
+};
+
+//FIXME: error vs null
+GITTEH_WORK(repo_discover)
+  // prepare
+  int len = r->start->length() + 7; //one for \0, more for "/.git/"
+  char* out = new char[len];
+  
+  int status = git_repository_discover(out, len, **r->start, r->across_fs, r->ceiling_dirs);
+  delete r->start;
+  if (status!=GIT_OK) {
+    collectErr(status, r->err);
+    delete [] out;
+    r->output = NULL;
+    return;
+  }
+  
+  r->output = out;
+GITTEH_WORK_AFTER(repo_discover)
+  v8::Handle<v8::Value> argv [2];
+  if (r->output) {
+    argv[0] = v8::Null();
+    argv[1] = v8u::Str(r->output);
+    delete [] r->output;
+  } else {
+    argv[0] = composeErr(r->err);
+    argv[1] = v8::Null();
+  }
+GITTEH_WORK_END(2);
+
+V8_SCB(Repository::Discover) {
+  int len = args.Length()-1; // don't count the callback
+  if (len < 1) V8_STHROW(v8u::RangeErr("Not enough arguments!"));
+  if (len > 3) len = 3;
+  if (!args[len]->IsFunction()) V8_STHROW(v8u::TypeErr("A Function is needed as callback!"));
+  
+  repo_discover_req* r = new repo_discover_req;
+  r->start = new v8::String::Utf8Value(args[0]);
+  
+  r->across_fs = len>=2 ? v8u::Bool(args[1]) : false;
+  r->ceiling_dirs = NULL; //FIXME:ceiling
+  
+  r->cb = v8u::Persist<Function>(v8u::Cast<Function>(args[len]));
+  GITTEH_WORK_QUEUE(repo_discover);
+}
+
+V8_SCB(Repository::DiscoverSync) {
+  v8::String::Utf8Value start (args[0]);
+  int len = start.length();
+  char* cstart = new char[len+1];
+  memcpy(cstart, *start, len);
+  cstart[len] = 0;
+  
+  len += 7; //one for \0, more for "/.git/"
+  char* out = new char[len];
+  
+  error_info info;
+  int status = git_repository_discover(out, len, cstart, v8u::Bool(args[1]), NULL); //FIXME:ceiling
+  if (status == GIT_OK) {
+    Local<v8::String> ret = v8u::Str(out);
+    delete [] out;
+    delete [] cstart;
+    return ret;
+  }
+  collectErr(status, info);
+  delete [] out;
+  delete [] cstart;
+  V8_STHROW(composeErr(info));
+}
+
+
+
 NODE_ETYPE(Repository, "Repository") {
   //TODO
   
-  Local<v8::Function> func = templ->GetFunction();
+  Local<Function> func = templ->GetFunction();
+  
+  func->Set(Symbol("discover"), Func(Discover)->GetFunction());
+  func->Set(Symbol("discoverSync"), Func(DiscoverSync)->GetFunction());
   
   //ENUM: repository states -- STATE
   Local<v8::Object> stateHash = v8u::Obj();
