@@ -40,19 +40,14 @@ inline void prepare(const char* in, char* out, int& len) {
 
 // another approach would be to call prettify() with no buffer,
 // allocate the size and call again, but this is faster
-V8_CB(Prettify) {
+V8_SCB(Prettify) {
   
   // Allocate
   v8::String::Utf8Value msg (args[0]);
   int len = msg.length();
   int out_len = len;
-  char* in  = new (std::nothrow) char [++out_len]; // one more for the trailing \0
-  if (in == NULL) V8_THROW(v8u::Err("Couldn't allocate memory."));
-  char* out = new (std::nothrow) char [++out_len]; // another for the trailing \n
-  if (out == NULL) {
-    delete[] in;
-    V8_THROW(v8u::Err("Couldn't allocate memory."));
-  }
+  char* in  = new char [++out_len]; // one more for the trailing \0
+  char* out = new char [++out_len]; // another for the trailing \n
 
   // Prepare input
   prepare(*msg, in, len);
@@ -62,9 +57,9 @@ V8_CB(Prettify) {
   delete[] in;
   v8::Local<v8::String> ret = v8u::Str(out, final_len-1);
   delete[] out;
-  V8_RET(ret);
+  return ret;
 
-} V8_CB_END()
+}
 
 };
 
