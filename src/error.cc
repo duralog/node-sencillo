@@ -23,6 +23,8 @@
  * THE SOFTWARE.
  */
 
+#include <node/v8.h>
+
 #include "error.h"
 
 
@@ -32,6 +34,15 @@ void check(int status) {
   if (status==GIT_OK) return;
   //TODO: wrap & throw error
   V8_THROW(v8u::Err("Native libgit2 error."));
+}
+
+void collectErr(int status, error_info& info) {
+  //TODO
+}
+
+v8::Local<v8::Value> composeErr(error_info& info) {
+  //TODO
+  return v8u::Err("Native libgit2 error.");
 }
 
 };
