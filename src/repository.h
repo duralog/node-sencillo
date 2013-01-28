@@ -38,6 +38,11 @@ public:
   Repository(git_repository* ptr);
   ~Repository();
   V8_SCTOR();
+
+  // NOTE: Due to the allocation technique, this will
+  // only succeed if absolute paths are given.
+  static V8_SCB(Discover); static V8_SCB(DiscoverSync);
+
   NODE_STYPE(Repository);
 protected:
   git_repository* const repo;
