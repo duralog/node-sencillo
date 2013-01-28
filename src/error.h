@@ -38,12 +38,36 @@ namespace gitteh {
 //  protected:
 //    git_object obj;
 //  };
-  
+
+/*
+ * Info about a LibGit2 error.
+ * See `collectErr` for details.
+ */
+struct error_info {
+  int status;
+  git_error error;
+};
+
 /*
  * Check the status returned by a libgit2 function,
  * throw if error.
  */
 void check(int status);
+
+/*
+ * Collect information about a status error (which is *known* to be != OK).
+ * Use for composing the JS error object later with `composeErr`.
+ * 
+ * This is needed because you can't call V8 functions outside JS threads,
+ * (i.e. inside uv_queue_work) which is where the errors occur.
+ */
+void collectErr(int status, error_info& info);
+
+/*
+ * Create the JS error object provided a previous info
+ * captured with `collectErr`.
+ */
+v8::Local<v8::Value> composeErr(error_info& info);
 
 };
 
