@@ -57,6 +57,11 @@ V8_SCB(_isAbstract);
 
 
 //Work callbacks block-macros
+#define GITTEH_WORK_PRE(IDENTIFIER)                                            \
+  void IDENTIFIER##_work(uv_work_t *req);                                      \
+  void IDENTIFIER##_after(uv_work_t *req);                                     \
+  struct IDENTIFIER##_req
+
 #define GITTEH_WORK(IDENTIFIER)                                                \
   void IDENTIFIER##_work(uv_work_t *req) {                                     \
     GITTEH_WORK_UNWRAP(IDENTIFIER);

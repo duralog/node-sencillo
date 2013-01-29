@@ -187,7 +187,10 @@ V8_CB_END()
    **/                                                                         \
   virtual v8::Local<v8::Object> Wrapped();                                     \
   static bool HasInstance(v8::Handle<v8::Object> obj);                         \
-  inline static CPP_TYPE* Unwrap(v8::Handle<v8::Object> obj)
+  inline static CPP_TYPE* Unwrap(v8::Handle<v8::Object> obj) {                 \
+    if (_templ->HasInstance(obj)) return node::ObjectWrap::Unwrap<CPP_TYPE>(obj);\
+    V8_THROW(v8::Exception::TypeError(v8::String::New("Invalid object unwrapped.")));\
+  }
 
 #define V8_TYPE(CPP_TYPE)                                                      \
   static v8::FunctionTemplate* _templ;                                         \
@@ -230,10 +233,6 @@ V8_CB_END()
   bool TYPE::HasInstance(v8::Handle<v8::Object> obj) {                         \
     v8::HandleScope scope;                                                     \
     return _templ->HasInstance(obj);                                           \
-  }                                                                            \
-  TYPE* TYPE::Unwrap(v8::Handle<v8::Object> obj) {                             \
-    if (_templ->HasInstance(obj)) return node::ObjectWrap::Unwrap<TYPE>(obj);  \
-    V8_THROW(v8::Exception::TypeError(v8::String::New("Invalid object unwrapped.")));\
   }
 
 #define V8_POST_TYPE(CPP_TYPE) v8::FunctionTemplate* CPP_TYPE::_templ = NULL;
