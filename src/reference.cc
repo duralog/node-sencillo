@@ -84,7 +84,7 @@ V8_SCB(Reference::LookupResolved) {
     argv[0] = v8::Null();
     argv[1] = (new Reference(r->out))->Wrapped();
   } else {
-    argv[0] = composeErr(r->err);//FIXME: test
+    argv[0] = composeErr(r->err);
     argv[1] = v8::Null();
   }
   GITTEH_WORK_CALL(2);
