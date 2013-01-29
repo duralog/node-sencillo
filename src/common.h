@@ -48,10 +48,12 @@ V8_SCB(_isAbstract);
 // --based on node-lame's code
 
 //Unwrapping and starting work statement-macros
+//TODO: DO SOMETHING WITH STRINGS THAT CONTAIN '\0'
 #define GITTEH_ASYNC_CSTR(OBJ, VAR)                                            \
   int len = OBJ->length();                                                     \
   char* VAR = new char[len+1];                                                 \
   memcpy(VAR, **OBJ, len);                                                     \
+  delete OBJ;                                                                  \
   VAR[len] = 0
 #define GITTEH_SYNC_CSTR(OBJ, VAR)                                             \
   int len = OBJ.length();                                                      \
