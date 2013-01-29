@@ -25,6 +25,7 @@
 
 #include "repository.h"
 
+#include "common.h"
 #include "error.h"
 
 

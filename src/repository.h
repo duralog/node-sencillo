@@ -29,7 +29,6 @@
 #include "git2.h"
 
 #include "v8u.hpp"
-#include "common.h"
 
 namespace gitteh {
 
