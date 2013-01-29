@@ -26,17 +26,41 @@
 #include "reference.h"
 
 #include "common.h"
+#include "git2/refs.h"
 
 
 namespace gitteh {
 
-// Deny instances
-V8_ESCTOR(Reference) { V8_CTOR_NO_ALL }
+Reference::Reference(git_reference* ptr): ref(ptr), invalid(false) {}
+Reference::~Reference() {
+  if (invalid) return;
+  git_reference_free(ref);
+}
+
+V8_ESCTOR(Reference) { V8_CTOR_NO_JS }
+
+// TODO: methods go here
+
+// STATIC / FACTORY METHODS
+
+//// Reference.lookup(...)
+
+V8_SCB(Reference::Lookup) {
+  
+}
+
+
 
 NODE_ETYPE(Reference, "Reference") {
-  V8_DEF_CB("peel", _isAbstract);
-  V8_DEF_CB("peelSync", _isAbstract);
-  //Damn it, if there was a way to abstract "properties"...
+  //TODO
+  
+  Local<Function> func = templ->GetFunction();
+  
+  func->Set(Symbol("lookup"), Func(Lookup)->GetFunction());
+  func->Set(Symbol("lookupSync"), Func(LookupSync)->GetFunction());
+  
+  func->Set(Symbol("lookupResolved"), Func(LookupResolved)->GetFunction());
+  func->Set(Symbol("lookupResolvedSync"), Func(LookupResolvedSync)->GetFunction());
 } NODE_TYPE_END()
 
 V8_POST_TYPE(Reference)

@@ -34,10 +34,17 @@ namespace gitteh {
 
 class Reference : public GitObject {
 public:
-  Reference() {}
-  virtual ~Reference() = 0;
+  Reference();
+  ~Reference();
   V8_SCTOR();
+
+  static V8_SCB(Lookup); static V8_SCB(LookupSync);
+  static V8_SCB(LookupResolved); static V8_SCB(LookupResolvedSync);
+
   NODE_STYPE(Reference);
+protected:
+  git_reference* const ref;
+  bool invalid;
 };
 
 };
