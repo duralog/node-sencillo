@@ -9,6 +9,7 @@
       , "src/message.cc"
       , "src/object.cc"
       , "src/oid.cc"
+      , "src/reference.cc"
       , "src/repository.cc"
       ],
 

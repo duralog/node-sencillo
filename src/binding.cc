@@ -31,6 +31,7 @@
 #include "error.h"
 #include "oid.h"
 #include "object.h"
+#include "reference.h"
 #include "message.h"
 #include "repository.h"
 
@@ -75,6 +76,7 @@ NODE_DEF_MAIN() {
   Oid::init(target);
   GitObject::init(target);
   Repository::init(target);
+  Reference::init(target);
 } NODE_DEF_MAIN_END(gitteh)
 
 };
