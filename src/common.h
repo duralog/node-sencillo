@@ -74,6 +74,9 @@ V8_SCB(_isAbstract);
   if (try_catch.HasCaught()) node::FatalException(try_catch);                  \
 }
 
+#define GITTEH_CHECK_CB_ARGS(MIN)                                              \
+  if (len < 1) V8_STHROW(v8u::RangeErr("Not enough arguments!"));
+
 };
 
 #endif	/* GITTEH_COMMON_H */
