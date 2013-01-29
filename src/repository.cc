@@ -129,6 +129,46 @@ V8_SCB(Repository::DiscoverSync) {
 }
 
 
+//// Repository.open(...)
+
+GITTEH_WORK_PRE(repo_open) {
+  git_repository* out;
+  int flags;
+  error_info err;
+
+  Persistent<Function> cb;
+  uv_work_t req;
+};
+
+V8_SCB(Repository::Open) {
+  int len = args.Length()-1; // don't count the callback
+  if (len < 1) V8_STHROW(v8u::RangeErr("Not enough arguments!"));
+  if (len > 3) len = 3;
+  if (!args[len]->IsFunction()) V8_STHROW(v8u::TypeErr("A Function is needed as callback!"));
+  
+  repo_open_req* r = new repo_open_req;
+  
+  r->cb = v8u::Persist<Function>(v8u::Cast<Function>(args[len]));
+  GITTEH_WORK_QUEUE(repo_open);
+} GITTEH_WORK(repo_open) {
+  //TODO
+} GITTEH_WORK_AFTER(repo_open)
+  v8::Handle<v8::Value> argv [2];
+  if (r->out) {
+    argv[0] = v8::Null();
+    argv[1] = (new Repository(r->out))->Wrapped();
+    delete [] r->out;
+  } else {
+    argv[0] = composeErr(r->err);
+    argv[1] = v8::Null();
+  }
+GITTEH_WORK_END(2);
+
+V8_SCB(Repository::OpenSync) {
+  //TODO
+}
+
+
 
 NODE_ETYPE(Repository, "Repository") {
   //TODO
@@ -137,6 +177,9 @@ NODE_ETYPE(Repository, "Repository") {
   
   func->Set(Symbol("discover"), Func(Discover)->GetFunction());
   func->Set(Symbol("discoverSync"), Func(DiscoverSync)->GetFunction());
+  
+  func->Set(Symbol("open"), Func(Open)->GetFunction());
+  func->Set(Symbol("openSync"), Func(OpenSync)->GetFunction());
   
   //ENUM: repository states -- STATE
   Local<v8::Object> stateHash = v8u::Obj();
