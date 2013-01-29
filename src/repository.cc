@@ -77,22 +77,22 @@ V8_SCB(Repository::Discover) {
   
   r->cb = v8u::Persist<Function>(v8u::Cast<Function>(args[len]));
   GITTEH_WORK_QUEUE(repo_discover);
-} GITTEH_WORK(repo_discover) //FIXME: error vs null
-  // prepare
-  int len = r->start->length() + 7; //one for \0, more for "/.git/"
+} GITTEH_WORK(repo_discover) { //FIXME: error vs null
+  GITTEH_ASYNC_CSTR(r->start, cstart);
+  len += 7; //one for \0, more for "/.git/"
   char* out = new char[len];
-  
-  int status = git_repository_discover(out, len, **r->start, r->across_fs, r->ceiling_dirs);
-  delete r->start;
-  if (status!=GIT_OK) {
+
+  int status = git_repository_discover(out, len, cstart, r->across_fs, r->ceiling_dirs);
+  if (status==GIT_OK) {
+    delete [] cstart;
+    r->output = out;
+  } else {
     collectErr(status, r->err);
     delete [] out;
+    delete [] cstart;
     r->output = NULL;
-    return;
   }
-  
-  r->output = out;
-GITTEH_WORK_AFTER(repo_discover)
+} GITTEH_WORK_AFTER(repo_discover) {
   v8::Handle<v8::Value> argv [2];
   if (r->output) {
     argv[0] = v8::Null();
@@ -102,15 +102,12 @@ GITTEH_WORK_AFTER(repo_discover)
     argv[0] = composeErr(r->err);
     argv[1] = v8::Null();
   }
-GITTEH_WORK_END(2);
+  GITTEH_WORK_CALL(2);
+} GITTEH_END
 
 V8_SCB(Repository::DiscoverSync) {
   v8::String::Utf8Value start (args[0]);
-  int len = start.length();
-  char* cstart = new char[len+1];
-  memcpy(cstart, *start, len);
-  cstart[len] = 0;
-  
+  GITTEH_SYNC_CSTR(start, cstart);
   len += 7; //one for \0, more for "/.git/"
   char* out = new char[len];
   
@@ -162,7 +159,8 @@ V8_SCB(Repository::Open) {
     argv[0] = composeErr(r->err);
     argv[1] = v8::Null();
   }
-GITTEH_WORK_END(2);
+  GITTEH_WORK_CALL(2);
+} GITTEH_END
 
 V8_SCB(Repository::OpenSync) {
   //TODO

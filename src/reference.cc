@@ -78,7 +78,7 @@ V8_SCB(Reference::LookupResolved) {
   GITTEH_WORK_QUEUE(ref_lookupres);
 } GITTEH_WORK(ref_lookupres) {
   //
-} GITTEH_WORK_AFTER(ref_lookupres)
+} GITTEH_WORK_AFTER(ref_lookupres) {
   v8::Handle<v8::Value> argv [2];
   if (r->out) {
     argv[0] = v8::Null();
@@ -87,7 +87,8 @@ V8_SCB(Reference::LookupResolved) {
     argv[0] = composeErr(r->err);//FIXME: test
     argv[1] = v8::Null();
   }
-GITTEH_WORK_END(2)
+  GITTEH_WORK_CALL(2);
+} GITTEH_END
 
 
 
