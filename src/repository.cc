@@ -52,7 +52,7 @@ V8_ESCTOR(Repository) { V8_CTOR_NO_JS }
 
 //// Repository.discover(...)
 
-struct repo_discover_req {
+GITTEH_WORK_PRE(repo_discover) {
   bool across_fs;
   v8::String::Utf8Value* start;
   char* ceiling_dirs;
@@ -63,8 +63,21 @@ struct repo_discover_req {
   uv_work_t req;
 };
 
-//FIXME: error vs null
-GITTEH_WORK(repo_discover)
+V8_SCB(Repository::Discover) {
+  int len = args.Length()-1; // don't count the callback
+  if (len < 1) V8_STHROW(v8u::RangeErr("Not enough arguments!"));
+  if (len > 3) len = 3;
+  if (!args[len]->IsFunction()) V8_STHROW(v8u::TypeErr("A Function is needed as callback!"));
+  
+  repo_discover_req* r = new repo_discover_req;
+  r->start = new v8::String::Utf8Value(args[0]);
+  
+  r->across_fs = len>=2 ? v8u::Bool(args[1]) : false;
+  r->ceiling_dirs = NULL; //FIXME:ceiling
+  
+  r->cb = v8u::Persist<Function>(v8u::Cast<Function>(args[len]));
+  GITTEH_WORK_QUEUE(repo_discover);
+} GITTEH_WORK(repo_discover) //FIXME: error vs null
   // prepare
   int len = r->start->length() + 7; //one for \0, more for "/.git/"
   char* out = new char[len];
@@ -90,22 +103,6 @@ GITTEH_WORK_AFTER(repo_discover)
     argv[1] = v8::Null();
   }
 GITTEH_WORK_END(2);
-
-V8_SCB(Repository::Discover) {
-  int len = args.Length()-1; // don't count the callback
-  if (len < 1) V8_STHROW(v8u::RangeErr("Not enough arguments!"));
-  if (len > 3) len = 3;
-  if (!args[len]->IsFunction()) V8_STHROW(v8u::TypeErr("A Function is needed as callback!"));
-  
-  repo_discover_req* r = new repo_discover_req;
-  r->start = new v8::String::Utf8Value(args[0]);
-  
-  r->across_fs = len>=2 ? v8u::Bool(args[1]) : false;
-  r->ceiling_dirs = NULL; //FIXME:ceiling
-  
-  r->cb = v8u::Persist<Function>(v8u::Cast<Function>(args[len]));
-  GITTEH_WORK_QUEUE(repo_discover);
-}
 
 V8_SCB(Repository::DiscoverSync) {
   v8::String::Utf8Value start (args[0]);
