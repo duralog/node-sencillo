@@ -25,9 +25,18 @@
 
 #include "reference.h"
 
+#include "repository.h"
 #include "common.h"
-#include "git2/refs.h"
+#include "error.h"
 
+
+using v8u::Int;
+using v8u::Symbol;
+using v8u::Bool;
+using v8u::Func;
+using v8::Local;
+using v8::Persistent;
+using v8::Function;
 
 namespace gitteh {
 
@@ -45,9 +54,40 @@ V8_ESCTOR(Reference) { V8_CTOR_NO_JS }
 
 //// Reference.lookup(...)
 
-V8_SCB(Reference::Lookup) {
-  
-}
+GITTEH_WORK_PRE(ref_lookupres) {
+  v8::String::Utf8Value* name;
+  Repository* repo;
+  git_reference* out;
+  error_info err;
+
+  Persistent<Function> cb;
+  uv_work_t req;
+};
+
+V8_SCB(Reference::LookupResolved) {
+  v8::Local<v8::Object> repo_obj;
+  if (!(args[0]->IsObject() && Repository::HasInstance(repo_obj = v8u::Obj(args[0]))))
+    V8_STHROW(v8u::TypeErr("Repository needed as first argument."));
+  if (!args[2]->IsFunction()) V8_STHROW(v8u::TypeErr("A Function is needed as callback!"));
+
+  ref_lookupres_req* r = new ref_lookupres_req;
+  r->repo = node::ObjectWrap::Unwrap<Repository>(repo_obj);
+  r->name = new v8::String::Utf8Value(args[1]);
+
+  r->cb = v8u::Persist<Function>(v8u::Cast<Function>(args[2]));
+  GITTEH_WORK_QUEUE(ref_lookupres);
+} GITTEH_WORK(ref_lookupres) {
+  //
+} GITTEH_WORK_AFTER(ref_lookupres)
+  v8::Handle<v8::Value> argv [2];
+  if (r->out) {
+    argv[0] = v8::Null();
+    argv[1] = (new Reference(r->out))->Wrapped();
+  } else {
+    argv[0] = composeErr(r->err);//FIXME: test
+    argv[1] = v8::Null();
+  }
+GITTEH_WORK_END(2)
 
 
 
