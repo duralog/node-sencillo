@@ -56,11 +56,11 @@ NODE_ETYPE(Reference, "Reference") {
   
   Local<Function> func = templ->GetFunction();
   
-  func->Set(Symbol("lookup"), Func(Lookup)->GetFunction());
-  func->Set(Symbol("lookupSync"), Func(LookupSync)->GetFunction());
+//  func->Set(Symbol("lookup"), Func(Lookup)->GetFunction());
+//  func->Set(Symbol("lookupSync"), Func(LookupSync)->GetFunction());
   
   func->Set(Symbol("lookupResolved"), Func(LookupResolved)->GetFunction());
-  func->Set(Symbol("lookupResolvedSync"), Func(LookupResolvedSync)->GetFunction());
+//  func->Set(Symbol("lookupResolvedSync"), Func(LookupResolvedSync)->GetFunction());
 } NODE_TYPE_END()
 
 V8_POST_TYPE(Reference)

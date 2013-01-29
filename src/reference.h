@@ -26,6 +26,8 @@
 #ifndef GITTEH_REFERENCE_H
 #define	GITTEH_REFERENCE_H
 
+#include "git2.h"
+
 #include "v8u.hpp"
 
 #include "object.h"
@@ -34,12 +36,12 @@ namespace gitteh {
 
 class Reference : public GitObject {
 public:
-  Reference();
+  Reference(git_reference* ptr);
   ~Reference();
   V8_SCTOR();
 
-  static V8_SCB(Lookup); static V8_SCB(LookupSync);
-  static V8_SCB(LookupResolved); static V8_SCB(LookupResolvedSync);
+//  static V8_SCB(Lookup); static V8_SCB(LookupSync);
+  static V8_SCB(LookupResolved); //static V8_SCB(LookupResolvedSync);
 
   NODE_STYPE(Reference);
 protected:

@@ -43,7 +43,7 @@ public:
   static V8_SCB(Discover); static V8_SCB(DiscoverSync);
 
   NODE_STYPE(Repository);
-protected:
+//protected:
   git_repository* const repo;
 };
 
