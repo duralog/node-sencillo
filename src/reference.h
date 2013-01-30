@@ -40,8 +40,7 @@ public:
   ~Reference();
   V8_SCTOR();
 
-//  static V8_SCB(Lookup); static V8_SCB(LookupSync);
-  static V8_SCB(LookupResolved); //static V8_SCB(LookupResolvedSync);
+  static V8_SCB(Lookup); //static V8_SCB(LookupSync);
 
   NODE_STYPE(Reference);
 protected:
