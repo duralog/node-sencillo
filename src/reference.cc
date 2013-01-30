@@ -54,9 +54,9 @@ V8_ESCTOR(Reference) { V8_CTOR_NO_JS }
 
 //// Reference.lookup(...)
 
-GITTEH_WORK_PRE(ref_lookupres) {
+GITTEH_WORK_PRE(ref_lookup) {
   v8::String::Utf8Value* name;
-  Repository* repo;
+  git_repository* repo;
   git_reference* out;
   error_info err;
 
@@ -64,21 +64,27 @@ GITTEH_WORK_PRE(ref_lookupres) {
   uv_work_t req;
 };
 
-V8_SCB(Reference::LookupResolved) {
+V8_SCB(Reference::Lookup) {
   v8::Local<v8::Object> repo_obj;
   if (!(args[0]->IsObject() && Repository::HasInstance(repo_obj = v8u::Obj(args[0]))))
     V8_STHROW(v8u::TypeErr("Repository needed as first argument."));
   if (!args[2]->IsFunction()) V8_STHROW(v8u::TypeErr("A Function is needed as callback!"));
 
-  ref_lookupres_req* r = new ref_lookupres_req;
-  r->repo = node::ObjectWrap::Unwrap<Repository>(repo_obj);
+  ref_lookup_req* r = new ref_lookup_req;
+  r->repo = node::ObjectWrap::Unwrap<Repository>(repo_obj)->repo;
   r->name = new v8::String::Utf8Value(args[1]);
 
   r->cb = v8u::Persist<Function>(v8u::Cast<Function>(args[2]));
-  GITTEH_WORK_QUEUE(ref_lookupres);
-} GITTEH_WORK(ref_lookupres) {
-  //
-} GITTEH_WORK_AFTER(ref_lookupres) {
+  GITTEH_WORK_QUEUE(ref_lookup);
+} GITTEH_WORK(ref_lookup) {
+  GITTEH_ASYNC_CSTR(r->name, cname);
+
+  int status = git_reference_lookup(&r->out, r->repo, cname);
+  delete [] cname;
+  if (status == GIT_OK) return;
+  collectErr(status, r->err);
+  r->out = NULL;
+} GITTEH_WORK_AFTER(ref_lookup) {
   v8::Handle<v8::Value> argv [2];
   if (r->out) {
     argv[0] = v8::Null();
@@ -97,11 +103,9 @@ NODE_ETYPE(Reference, "Reference") {
   
   Local<Function> func = templ->GetFunction();
   
-//  func->Set(Symbol("lookup"), Func(Lookup)->GetFunction());
+  func->Set(Symbol("lookup"), Func(Lookup)->GetFunction());
 //  func->Set(Symbol("lookupSync"), Func(LookupSync)->GetFunction());
   
-  func->Set(Symbol("lookupResolved"), Func(LookupResolved)->GetFunction());
-//  func->Set(Symbol("lookupResolvedSync"), Func(LookupResolvedSync)->GetFunction());
 } NODE_TYPE_END()
 
 V8_POST_TYPE(Reference)
