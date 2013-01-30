@@ -75,7 +75,7 @@ GITTEH_WORK_PRE(repo_discover) {
   bool across_fs;
   v8::String::Utf8Value* start;
   char* ceiling_dirs;
-  char* output;
+  char* out;
   error_info err;
 
   Persistent<Function> cb;
@@ -99,22 +99,20 @@ V8_SCB(Repository::Discover) {
 } GITTEH_WORK(repo_discover) { //FIXME: error vs null
   GITTEH_ASYNC_CSTR(r->start, cstart);
   len += 7; //one for \0, more for "/.git/"
-  char* out = new char[len];
+  r->out = new char[len];
 
-  int status = git_repository_discover(out, len, cstart, r->across_fs, r->ceiling_dirs);
+  int status = git_repository_discover(r->out, len, cstart, r->across_fs, r->ceiling_dirs);
   delete [] cstart;
-  if (status==GIT_OK) r->output = out;
-  else {
-    collectErr(status, r->err);
-    delete [] out;
-    r->output = NULL;
-  }
+  if (status==GIT_OK) return;
+  collectErr(status, r->err);
+  delete [] r->out;
+  r->out = NULL;
 } GITTEH_WORK_AFTER(repo_discover) {
   v8::Handle<v8::Value> argv [2];
-  if (r->output) {
+  if (r->out) {
     argv[0] = v8::Null();
-    argv[1] = v8u::Str(r->output);
-    delete [] r->output;
+    argv[1] = v8u::Str(r->out);
+    delete [] r->out;
   } else {
     argv[0] = composeErr(r->err);
     argv[1] = v8::Null();
