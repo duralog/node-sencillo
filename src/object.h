@@ -33,7 +33,7 @@ namespace gitteh {
 class GitObject : public node::ObjectWrap {
 public:
   GitObject() {}
-  virtual ~GitObject() = 0;
+  virtual ~GitObject() {};
   V8_SCTOR();
   NODE_STYPE(GitObject);
 };
