@@ -179,7 +179,27 @@ V8_SCB(Repository::Open) {
 } GITTEH_END
 
 V8_SCB(Repository::OpenSync) {
-  //TODO
+  v8::String::Utf8Value path (args[0]);
+  GITTEH_SYNC_CSTR(path, cpath);
+  
+  int status;
+  git_repository* out;
+  error_info err;
+  if (args.Length() > 1) {
+    // enter extended mode if not only the path is given
+    int flags = Int(args[1]);
+    char* ceiling_dirs;
+    /**if (len > 2) ceiling_dirs = TODO;
+    else**/ ceiling_dirs = NULL;
+
+    status = git_repository_open_ext(&out, cpath, flags, ceiling_dirs);
+    //if (ceiling_dirs) delete [] ceiling_dirs;
+  } else status = git_repository_open(&out, cpath);
+  
+  delete [] cpath;
+  if (status == GIT_OK) return (new Repository(out))->Wrapped();
+  collectErr(status, err);
+  V8_STHROW(composeErr(err));
 }
 
 
