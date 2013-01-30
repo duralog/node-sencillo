@@ -83,13 +83,11 @@ V8_SCB(Repository::Discover) {
   char* out = new char[len];
 
   int status = git_repository_discover(out, len, cstart, r->across_fs, r->ceiling_dirs);
-  if (status==GIT_OK) {
-    delete [] cstart;
-    r->output = out;
-  } else {
+  delete [] cstart;
+  if (status==GIT_OK) r->output = out;
+  else {
     collectErr(status, r->err);
     delete [] out;
-    delete [] cstart;
     r->output = NULL;
   }
 } GITTEH_WORK_AFTER(repo_discover) {
@@ -113,15 +111,11 @@ V8_SCB(Repository::DiscoverSync) {
   
   error_info info;
   int status = git_repository_discover(out, len, cstart, v8u::Bool(args[1]), NULL); //FIXME:ceiling
-  if (status == GIT_OK) {
-    Local<v8::String> ret = v8u::Str(out);
-    delete [] out;
-    delete [] cstart;
-    return ret;
-  }
-  collectErr(status, info);
+  
   delete [] out;
   delete [] cstart;
+  if (status == GIT_OK) return v8u::Str(out);
+  collectErr(status, info);
   V8_STHROW(composeErr(info));
 }
 
