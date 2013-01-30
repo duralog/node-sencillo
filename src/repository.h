@@ -38,6 +38,10 @@ public:
   ~Repository();
   V8_SCTOR();
 
+  V8_SGET(GetWorkdir);
+  V8_SGET(GetPath);
+  V8_SGET(IsBare);
+
   // NOTE: Due to the allocation technique, this will
   // only succeed if absolute paths are given.
   static V8_SCB(Discover); static V8_SCB(DiscoverSync);

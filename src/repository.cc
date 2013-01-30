@@ -46,7 +46,26 @@ Repository::~Repository() {
 
 V8_ESCTOR(Repository) { V8_CTOR_NO_JS }
 
-// TODO: methods go here
+
+
+// A FEW ACCESSORS
+
+V8_ESGET(Repository, GetWorkdir) {
+  V8_M_UNWRAP(Repository, info.Holder());
+  return v8u::Str(git_repository_workdir(inst->repo));
+}
+
+V8_ESGET(Repository, GetPath) {
+  V8_M_UNWRAP(Repository, info.Holder());
+  return v8u::Str(git_repository_path(inst->repo));
+}
+
+V8_ESGET(Repository, IsBare) {
+  V8_M_UNWRAP(Repository, info.Holder());
+  return v8u::Bool(git_repository_is_bare(inst->repo));
+}
+
+
 
 // STATIC / FACTORY METHODS
 
@@ -205,16 +224,18 @@ V8_SCB(Repository::OpenSync) {
 
 
 NODE_ETYPE(Repository, "Repository") {
-  //TODO
-  
+  V8_DEF_GET("workdir", GetWorkdir);
+  V8_DEF_GET("path", GetPath);
+  V8_DEF_GET("bare", IsBare);
+
   Local<Function> func = templ->GetFunction();
-  
+
   func->Set(Symbol("discover"), Func(Discover)->GetFunction());
   func->Set(Symbol("discoverSync"), Func(DiscoverSync)->GetFunction());
-  
+
   func->Set(Symbol("open"), Func(Open)->GetFunction());
   func->Set(Symbol("openSync"), Func(OpenSync)->GetFunction());
-  
+
   //ENUM: repository states -- STATE
   Local<v8::Object> stateHash = v8u::Obj();
   stateHash->Set(Symbol("NONE"), Int(GIT_REPOSITORY_STATE_NONE));
