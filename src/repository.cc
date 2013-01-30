@@ -130,31 +130,53 @@ V8_SCB(Repository::DiscoverSync) {
 
 GITTEH_WORK_PRE(repo_open) {
   git_repository* out;
+  v8::String::Utf8Value* path;
   int flags;
+  bool ext;
+  char* ceiling_dirs;
   error_info err;
 
   Persistent<Function> cb;
   uv_work_t req;
 };
 
+//TODO: make an exists(...) pair
 V8_SCB(Repository::Open) {
   int len = args.Length()-1; // don't count the callback
   if (len < 1) V8_STHROW(v8u::RangeErr("Not enough arguments!"));
   if (len > 3) len = 3;
   if (!args[len]->IsFunction()) V8_STHROW(v8u::TypeErr("A Function is needed as callback!"));
-  
+
   repo_open_req* r = new repo_open_req;
-  
+  r->path = new v8::String::Utf8Value(args[0]);
+  if ((r->ext = len > 1)) {
+    // enter extended mode if not only the path is given
+    r->flags = Int(args[1]);
+    /**if (len > 2) r->ceiling_dirs = TODO;
+    else**/ r->ceiling_dirs = NULL;
+  }
+
   r->cb = v8u::Persist<Function>(v8u::Cast<Function>(args[len]));
   GITTEH_WORK_QUEUE(repo_open);
 } GITTEH_WORK(repo_open) {
-  //TODO
-} GITTEH_WORK_AFTER(repo_open)
+  GITTEH_ASYNC_CSTR(r->path, cpath);
+
+  int status;
+  if (r->ext) status = git_repository_open_ext(&r->out, cpath, r->flags, r->ceiling_dirs);
+  else        status = git_repository_open    (&r->out, cpath);
+
+  if (status == GIT_OK) {
+    delete [] cpath;
+  } else {
+    collectErr(status, r->err);
+    delete [] cpath;
+    r->out = NULL;
+  }
+} GITTEH_WORK_AFTER(repo_open) {
   v8::Handle<v8::Value> argv [2];
   if (r->out) {
     argv[0] = v8::Null();
     argv[1] = (new Repository(r->out))->Wrapped();
-    delete [] r->out;
   } else {
     argv[0] = composeErr(r->err);
     argv[1] = v8::Null();
