@@ -124,7 +124,7 @@ V8_SCB(Reference::StaticResolve) {
   GITTEH_WORK_QUEUE(ref_sresolve);
 } GITTEH_WORK(ref_sresolve) {
   GITTEH_ASYNC_CSTR(r->name, cname);
-
+  
   int status = git_reference_name_to_id(&r->out, r->repo, cname);
   delete [] cname;
   if ((r->ok= status == GIT_OK)) return;
@@ -141,6 +141,25 @@ V8_SCB(Reference::StaticResolve) {
   GITTEH_WORK_CALL(2);
 } GITTEH_END
 
+V8_SCB(Reference::StaticResolveSync) {
+  v8::Local<v8::Object> repo_obj;
+  if (!(args[0]->IsObject() && Repository::HasInstance(repo_obj = v8u::Obj(args[0]))))
+    V8_STHROW(v8u::TypeErr("Repository needed as first argument."));
+  
+  git_repository* repo = node::ObjectWrap::Unwrap<Repository>(repo_obj)->repo;
+  v8::String::Utf8Value name (args[1]);
+  GITTEH_SYNC_CSTR(name, cname);
+  
+  git_oid oid;
+  error_info err;
+  int status = git_reference_name_to_id(&oid, repo, cname);
+  delete [] cname;
+  
+  if (status == GIT_OK) return (new Oid(oid))->Wrapped();
+  collectErr(status, err);
+  V8_STHROW(composeErr(err));
+}
+
 
 
 NODE_ETYPE(Reference, "Reference") {
@@ -152,7 +171,7 @@ NODE_ETYPE(Reference, "Reference") {
 //  func->Set(Symbol("lookupSync"), Func(LookupSync)->GetFunction());
   
   func->Set(Symbol("resolve"), Func(StaticResolve)->GetFunction());
-//  func->Set(Symbol("resolveSync"), Func(StaticResolveSync)->GetFunction());
+  func->Set(Symbol("resolveSync"), Func(StaticResolveSync)->GetFunction());
 } NODE_TYPE_END()
 
 V8_POST_TYPE(Reference)
