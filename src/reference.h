@@ -41,7 +41,7 @@ public:
   V8_SCTOR();
 
   static V8_SCB(Lookup); //static V8_SCB(LookupSync);
-  static V8_SCB(StaticResolve); //static V8_SCB(StaticResolveSync);
+  static V8_SCB(StaticResolve); static V8_SCB(StaticResolveSync);
 
   NODE_STYPE(Reference);
 protected:
