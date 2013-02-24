@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2012 the libgit2 contributors
+ * Copyright (C) the libgit2 contributors. All rights reserved.
  *
  * This file is part of libgit2, distributed under the GNU GPL v2 with
  * a Linking Exception. For full terms see the included COPYING file.
@@ -66,6 +66,12 @@ int gitno_send(gitno_socket *socket, const char *msg, size_t len, int flags);
 int gitno_close(gitno_socket *s);
 int gitno_select_in(gitno_buffer *buf, long int sec, long int usec);
 
-int gitno_extract_host_and_port(char **host, char **port, const char *url, const char *default_port);
+int gitno_extract_url_parts(
+		char **host,
+		char **port,
+		char **username,
+		char **password,
+		const char *url,
+		const char *default_port);
 
 #endif

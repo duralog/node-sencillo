@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2012 the libgit2 contributors
+ * Copyright (C) the libgit2 contributors. All rights reserved.
  *
  * This file is part of libgit2, distributed under the GNU GPL v2 with
  * a Linking Exception. For full terms see the included COPYING file.
@@ -25,8 +25,16 @@ extern int git_pathspec_init(
 /* free data from the pathspec vector */
 extern void git_pathspec_free(git_vector *vspec);
 
-/* match a path against the vectorized pathspec */
+/*
+ * Match a path against the vectorized pathspec.
+ * The matched pathspec is passed back into the `matched_pathspec` parameter,
+ * unless it is passed as NULL by the caller.
+ */
 extern bool git_pathspec_match_path(
-	git_vector *vspec, const char *path, bool disable_fnmatch, bool casefold);
+	git_vector *vspec,
+	const char *path,
+	bool disable_fnmatch,
+	bool casefold,
+	const char **matched_pathspec);
 
 #endif

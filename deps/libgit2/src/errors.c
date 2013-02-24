@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2012 the libgit2 contributors
+ * Copyright (C) the libgit2 contributors. All rights reserved.
  *
  * This file is part of libgit2, distributed under the GNU GPL v2 with
  * a Linking Exception. For full terms see the included COPYING file.
@@ -51,18 +51,11 @@ void giterr_set(int error_class, const char *string, ...)
 
 	if (error_class == GITERR_OS) {
 #ifdef GIT_WIN32
-		if (win32_error_code) {
-			char *lpMsgBuf;
-
-			if (FormatMessageA(
-					FORMAT_MESSAGE_ALLOCATE_BUFFER |
-					FORMAT_MESSAGE_FROM_SYSTEM |
-					FORMAT_MESSAGE_IGNORE_INSERTS,
-					NULL, win32_error_code, 0, (LPSTR)&lpMsgBuf, 0, NULL)) {
-				git_buf_PUTS(&buf, ": ");
-				git_buf_puts(&buf, lpMsgBuf);
-				LocalFree(lpMsgBuf);
-			}
+		char * win32_error = git_win32_get_error_message(win32_error_code);
+		if (win32_error) {
+			git_buf_PUTS(&buf, ": ");
+			git_buf_puts(&buf, win32_error);
+			git__free(win32_error);
 
 			SetLastError(0);
 		}
@@ -96,15 +89,16 @@ void giterr_set_str(int error_class, const char *string)
 int giterr_set_regex(const regex_t *regex, int error_code)
 {
 	char error_buf[1024];
+
+	assert(error_code);
+
 	regerror(error_code, regex, error_buf, sizeof(error_buf));
 	giterr_set_str(GITERR_REGEX, error_buf);
 
 	if (error_code == REG_NOMATCH)
 		return GIT_ENOTFOUND;
-	else if (error_code > REG_BADPAT)
-		return GIT_EINVALIDSPEC;
-	else
-		return -1;
+
+	return GIT_EINVALIDSPEC;
 }
 
 void giterr_clear(void)

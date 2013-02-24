@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2012 the libgit2 contributors
+ * Copyright (C) the libgit2 contributors. All rights reserved.
  *
  * This file is part of libgit2, distributed under the GNU GPL v2 with
  * a Linking Exception. For full terms see the included COPYING file.
@@ -318,12 +318,15 @@ static int local_download_pack(
 
 		if (!git_object_lookup((git_object**)&commit, t->repo, &oid, GIT_OBJ_COMMIT)) {
 			const git_oid *tree_oid = git_commit_tree_id(commit);
-			git_commit_free(commit);
 
 			/* Add the commit and its tree */
 			if ((error = git_packbuilder_insert(pack, &oid, NULL)) < 0 ||
-				 (error = git_packbuilder_insert_tree(pack, tree_oid)) < 0)
+				 (error = git_packbuilder_insert_tree(pack, tree_oid)) < 0) {
+				git_commit_free(commit);
 				goto cleanup;
+			}
+
+			git_commit_free(commit);
 		}
 	}
 

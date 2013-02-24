@@ -4,11 +4,17 @@
 #include "path.h"
 #include "remote.h"
 
-static void transfer_cb(const git_transfer_progress *stats, void *payload)
+static int transfer_cb(const git_transfer_progress *stats, void *payload)
 {
 	int *callcount = (int*)payload;
 	GIT_UNUSED(stats);
 	(*callcount)++;
+	return 0;
+}
+
+static void cleanup_local_repo(void *path)
+{
+	cl_fixture_cleanup((char *)path);
 }
 
 void test_network_fetchlocal__complete(void)
@@ -19,9 +25,11 @@ void test_network_fetchlocal__complete(void)
 	git_strarray refnames = {0};
 
 	const char *url = cl_git_fixture_url("testrepo.git");
+
+	cl_set_cleanup(&cleanup_local_repo, "foo");
 	cl_git_pass(git_repository_init(&repo, "foo", true));
 
-	cl_git_pass(git_remote_add(&origin, repo, GIT_REMOTE_ORIGIN, url));
+	cl_git_pass(git_remote_create(&origin, repo, GIT_REMOTE_ORIGIN, url));
 	cl_git_pass(git_remote_connect(origin, GIT_DIRECTION_FETCH));
 	cl_git_pass(git_remote_download(origin, transfer_cb, &callcount));
 	cl_git_pass(git_remote_update_tips(origin));
@@ -35,6 +43,12 @@ void test_network_fetchlocal__complete(void)
 	git_repository_free(repo);
 }
 
+static void cleanup_sandbox(void *unused)
+{
+	GIT_UNUSED(unused);
+	cl_git_sandbox_cleanup();
+}
+
 void test_network_fetchlocal__partial(void)
 {
 	git_repository *repo = cl_git_sandbox_init("partial-testrepo");
@@ -43,11 +57,12 @@ void test_network_fetchlocal__partial(void)
 	git_strarray refnames = {0};
 	const char *url;
 
+	cl_set_cleanup(&cleanup_sandbox, NULL);
 	cl_git_pass(git_reference_list(&refnames, repo, GIT_REF_LISTALL));
 	cl_assert_equal_i(1, (int)refnames.count);
 
 	url = cl_git_fixture_url("testrepo.git");
-	cl_git_pass(git_remote_add(&origin, repo, GIT_REMOTE_ORIGIN, url));
+	cl_git_pass(git_remote_create(&origin, repo, GIT_REMOTE_ORIGIN, url));
 	cl_git_pass(git_remote_connect(origin, GIT_DIRECTION_FETCH));
 	cl_git_pass(git_remote_download(origin, transfer_cb, &callcount));
 	cl_git_pass(git_remote_update_tips(origin));
@@ -60,6 +75,4 @@ void test_network_fetchlocal__partial(void)
 
 	git_strarray_free(&refnames);
 	git_remote_free(origin);
-
-	cl_git_sandbox_cleanup();
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2012 the libgit2 contributors
+ * Copyright (C) the libgit2 contributors. All rights reserved.
  *
  * This file is part of libgit2, distributed under the GNU GPL v2 with
  * a Linking Exception. For full terms see the included COPYING file.
@@ -27,6 +27,7 @@ struct git_tree {
 
 struct git_treebuilder {
 	git_vector entries;
+	size_t entrycount; /* vector may contain "removed" entries */
 };
 
 GIT_INLINE(int) git_tree__dup(git_tree **dest, git_tree *source)
@@ -38,6 +39,8 @@ GIT_INLINE(bool) git_tree_entry__is_tree(const struct git_tree_entry *e)
 {
 	return (S_ISDIR(e->attr) && !S_ISGITLINK(e->attr));
 }
+
+extern int git_tree_entry_icmp(const git_tree_entry *e1, const git_tree_entry *e2);
 
 void git_tree__free(git_tree *tree);
 int git_tree__parse(git_tree *tree, git_odb_object *obj);

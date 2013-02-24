@@ -4,7 +4,6 @@
 #include "repository.h"
 
 static git_clone_options g_options;
-static git_remote *g_origin;
 static git_repository *g_repo;
 static git_repository *g_repo_cloned;
 
@@ -17,13 +16,10 @@ void test_clone_empty__initialize(void)
 
 	memset(&g_options, 0, sizeof(git_clone_options));
 	g_options.version = GIT_CLONE_OPTIONS_VERSION;
-	cl_git_pass(git_remote_new(&g_origin, NULL, "origin", cl_git_fixture_url("testrepo.git"), GIT_REMOTE_DEFAULT_FETCH));
 }
 
 void test_clone_empty__cleanup(void)
 {
-	git_remote_free(g_origin);
-	g_origin = NULL;
 	cl_git_sandbox_cleanup();
 }
 
@@ -37,25 +33,42 @@ static void cleanup_repository(void *path)
 
 void test_clone_empty__can_clone_an_empty_local_repo_barely(void)
 {
+	char *local_name = "refs/heads/master";
+	const char *expected_tracked_branch_name = "refs/remotes/origin/master";
+	const char *expected_remote_name = "origin";
+	char buffer[1024];
+	git_reference *ref;
+
 	cl_set_cleanup(&cleanup_repository, "./empty");
 
-	git_remote_free(g_origin);
-	g_origin = NULL;
-	cl_git_pass(git_remote_new(&g_origin, NULL, "origin", "./empty_bare.git", GIT_REMOTE_DEFAULT_FETCH));
-
 	g_options.bare = true;
-	cl_git_pass(git_clone(&g_repo_cloned, g_origin, "./empty", &g_options));
+	cl_git_pass(git_clone(&g_repo_cloned, "./empty_bare.git", "./empty", &g_options));
+
+	/* Although the HEAD is orphaned... */
+	cl_assert_equal_i(GIT_ENOTFOUND, git_reference_lookup(&ref, g_repo_cloned, local_name));
+
+	/* ...one can still retrieve the name of the remote tracking reference */
+	cl_assert_equal_i((int)strlen(expected_tracked_branch_name) + 1, 
+		git_branch_tracking_name(buffer, 1024, g_repo_cloned, local_name));
+
+	cl_assert_equal_s(expected_tracked_branch_name, buffer);
+
+	/* ...and the name of the remote... */
+	cl_assert_equal_i((int)strlen(expected_remote_name) + 1, 
+		git_branch_remote_name(buffer, 1024, g_repo_cloned, expected_tracked_branch_name));
+
+	cl_assert_equal_s(expected_remote_name, buffer);
+
+	/* ...even when the remote HEAD is orphaned as well */
+	cl_assert_equal_i(GIT_ENOTFOUND, git_reference_lookup(&ref, g_repo_cloned,
+		expected_tracked_branch_name));
 }
 
 void test_clone_empty__can_clone_an_empty_local_repo(void)
 {
 	cl_set_cleanup(&cleanup_repository, "./empty");
 
-	git_remote_free(g_origin);
-	g_origin = NULL;
-	cl_git_pass(git_remote_new(&g_origin, NULL, "origin", "./empty_bare.git", GIT_REMOTE_DEFAULT_FETCH));
-
-	cl_git_pass(git_clone(&g_repo_cloned, g_origin, "./empty", &g_options));
+	cl_git_pass(git_clone(&g_repo_cloned, "./empty_bare.git", "./empty", &g_options));
 }
 
 void test_clone_empty__can_clone_an_empty_standard_repo(void)
@@ -64,11 +77,7 @@ void test_clone_empty__can_clone_an_empty_standard_repo(void)
 	g_repo = cl_git_sandbox_init("empty_standard_repo");
 	cl_git_remove_placeholders(git_repository_path(g_repo), "dummy-marker.txt");
 
-	git_remote_free(g_origin);
-	g_origin = NULL;
-	cl_git_pass(git_remote_new(&g_origin, NULL, "origin", "./empty_standard_repo", GIT_REMOTE_DEFAULT_FETCH));
-
 	cl_set_cleanup(&cleanup_repository, "./empty");
 
-	cl_git_pass(git_clone(&g_repo_cloned, g_origin, "./empty", &g_options));
+	cl_git_pass(git_clone(&g_repo_cloned, "./empty_standard_repo", "./empty", &g_options));
 }

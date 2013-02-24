@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2012 the libgit2 contributors
+ * Copyright (C) the libgit2 contributors. All rights reserved.
  *
  * This file is part of libgit2, distributed under the GNU GPL v2 with
  * a Linking Exception. For full terms see the included COPYING file.
@@ -121,7 +121,7 @@ mode_t git_futils_canonical_mode(mode_t raw_mode)
 
 int git_futils_readbuffer_fd(git_buf *buf, git_file fd, size_t len)
 {
-	ssize_t read_size;
+	ssize_t read_size = 0;
 
 	git_buf_clear(buf);
 
@@ -300,25 +300,43 @@ int git_futils_mkdir(
 
 		/* make directory */
 		if (p_mkdir(make_path.ptr, mode) < 0) {
-			if (errno == EEXIST) {
-				if (!lastch && (flags & GIT_MKDIR_VERIFY_DIR) != 0) {
-					if (!git_path_isdir(make_path.ptr)) {
+			int already_exists = 0;
+
+			switch (errno) {
+				case EEXIST:
+					if (!lastch && (flags & GIT_MKDIR_VERIFY_DIR) != 0 &&
+						!git_path_isdir(make_path.ptr)) {
 						giterr_set(
 							GITERR_OS, "Existing path is not a directory '%s'",
 							make_path.ptr);
 						error = GIT_ENOTFOUND;
 						goto fail;
 					}
-				}
-				if ((flags & GIT_MKDIR_EXCL) != 0) {
-					giterr_set(GITERR_OS, "Directory already exists '%s'",
+
+					already_exists = 1;
+					break;
+				case ENOSYS:
+					/* Solaris can generate this error if you try to mkdir
+					 * a path which is already a mount point. In that case,
+					 * the path does already exist; but it's not implied by
+					 * the definition of the error, so let's recheck */
+					if (git_path_isdir(make_path.ptr)) {
+						already_exists = 1;
+						break;
+					}
+
+					/* Fall through */
+					errno = ENOSYS;
+				default:
+					giterr_set(GITERR_OS, "Failed to make directory '%s'",
 						make_path.ptr);
-					error = GIT_EEXISTS;
 					goto fail;
-				}
-			} else {
-				giterr_set(GITERR_OS, "Failed to make directory '%s'",
+			}
+
+			if (already_exists && (flags & GIT_MKDIR_EXCL) != 0) {
+				giterr_set(GITERR_OS, "Directory already exists '%s'",
 					make_path.ptr);
+				error = GIT_EEXISTS;
 				goto fail;
 			}
 		}
@@ -352,6 +370,7 @@ int git_futils_mkdir_r(const char *path, const char *base, const mode_t mode)
 
 typedef struct {
 	const char *base;
+	size_t baselen;
 	uint32_t flags;
 	int error;
 } futils__rmdir_data;
@@ -443,9 +462,13 @@ static int futils__rmdir_recurs_foreach(void *opaque, git_buf *path)
 
 static int futils__rmdir_empty_parent(void *opaque, git_buf *path)
 {
-	int error = p_rmdir(path->ptr);
+	futils__rmdir_data *data = opaque;
+	int error;
 
-	GIT_UNUSED(opaque);
+	if (git_buf_len(path) <= data->baselen)
+		return GIT_ITEROVER;
+
+	error = p_rmdir(git_buf_cstr(path));
 
 	if (error) {
 		int en = errno;
@@ -457,7 +480,7 @@ static int futils__rmdir_empty_parent(void *opaque, git_buf *path)
 			giterr_clear();
 			error = GIT_ITEROVER;
 		} else {
-			futils__error_cannot_rmdir(path->ptr, NULL);
+			futils__error_cannot_rmdir(git_buf_cstr(path), NULL);
 		}
 	}
 
@@ -475,9 +498,10 @@ int git_futils_rmdir_r(
 	if (git_path_join_unrooted(&fullpath, path, base, NULL) < 0)
 		return -1;
 
-	data.base  = base ? base : "";
-	data.flags = flags;
-	data.error = 0;
+	data.base    = base ? base : "";
+	data.baselen = base ? strlen(base) : 0;
+	data.flags   = flags;
+	data.error   = 0;
 
 	error = futils__rmdir_recurs_foreach(&data, &fullpath);
 
@@ -538,12 +562,6 @@ int git_futils_find_global_file(git_buf *path, const char *filename)
 		/* try to look up file under path */
 		if (!win32_find_file(path, &root, filename))
 			return 0;
-
-		/* No error if file not found under %HOME%, b/c we don't trust it,
-		 * but do error if another var is set and yet file is not found.
-		 */
-		if (tmpl != tmpls)
-			break;
 	}
 
 	giterr_set(GITERR_OS, "The global file '%s' doesn't exist", filename);

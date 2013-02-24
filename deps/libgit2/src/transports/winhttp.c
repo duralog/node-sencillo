@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2012 the libgit2 contributors
+ * Copyright (C) the libgit2 contributors. All rights reserved.
  *
  * This file is part of libgit2, distributed under the GNU GPL v2 with
  * a Linking Exception. For full terms see the included COPYING file.
@@ -73,7 +73,10 @@ typedef struct {
 	const char *path;
 	char *host;
 	char *port;
+	char *user_from_url;
+	char *pass_from_url;
 	git_cred *cred;
+	git_cred *url_cred;
 	int auth_mechanism;
 	HINTERNET session;
 	HINTERNET connection;
@@ -85,7 +88,7 @@ static int apply_basic_credential(HINTERNET request, git_cred *cred)
 	git_cred_userpass_plaintext *c = (git_cred_userpass_plaintext *)cred;
 	git_buf buf = GIT_BUF_INIT, raw = GIT_BUF_INIT;
 	wchar_t *wide = NULL;
-	int error = -1, wide_len;
+	int error = -1, wide_len = 0;
 
 	git_buf_printf(&raw, "%s:%s", c->username, c->password);
 
@@ -250,6 +253,16 @@ static int winhttp_stream_connect(winhttp_stream *s)
 		apply_basic_credential(s->request, t->cred) < 0)
 		goto on_error;
 
+	/* If no other credentials have been applied and the URL has username and
+	 * password, use those */
+	if (!t->cred && t->user_from_url && t->pass_from_url) {
+		if (!t->url_cred &&
+			 git_cred_userpass_plaintext_new(&t->url_cred, t->user_from_url, t->pass_from_url) < 0)
+			goto on_error;
+		if (apply_basic_credential(s->request, t->url_cred) < 0)
+			goto on_error;
+	}
+
 	/* We've done everything up to calling WinHttpSendRequest. */
 
 	error = 0;
@@ -298,7 +311,7 @@ static int write_chunk(HINTERNET request, const char *buffer, size_t len)
 		return -1;
 
 	if (!WinHttpWriteData(request,
-		git_buf_cstr(&buf),	git_buf_len(&buf),
+		git_buf_cstr(&buf),	(DWORD)git_buf_len(&buf),
 		&bytes_written)) {
 		git_buf_free(&buf);
 		giterr_set(GITERR_OS, "Failed to write chunk header");
@@ -309,7 +322,7 @@ static int write_chunk(HINTERNET request, const char *buffer, size_t len)
 
 	/* Chunk body */
 	if (!WinHttpWriteData(request,
-		buffer, len,
+		buffer, (DWORD)len,
 		&bytes_written)) {
 		giterr_set(GITERR_OS, "Failed to write chunk");
 		return -1;
@@ -447,7 +460,7 @@ replay:
 			if (allowed_types &&
 				(!t->cred || 0 == (t->cred->credtype & allowed_types))) {
 
-				if (t->owner->cred_acquire_cb(&t->cred, t->owner->url, allowed_types, t->owner->cred_acquire_payload) < 0)
+				if (t->owner->cred_acquire_cb(&t->cred, t->owner->url, t->user_from_url, allowed_types, t->owner->cred_acquire_payload) < 0)
 					return -1;
 
 				assert(t->cred);
@@ -494,7 +507,7 @@ replay:
 
 	if (!WinHttpReadData(s->request,
 		(LPVOID)buffer,
-		buf_size,
+		(DWORD)buf_size,
 		&dw_bytes_read))
 	{
 		giterr_set(GITERR_OS, "Failed to read data");
@@ -580,7 +593,7 @@ static int put_uuid_string(LPWSTR buffer, DWORD buffer_len_cch)
 
 static int get_temp_file(LPWSTR buffer, DWORD buffer_len_cch)
 {
-	int len;
+	size_t len;
 
 	if (!GetTempPathW(buffer_len_cch, buffer)) {
 		giterr_set(GITERR_OS, "Failed to get temp path");
@@ -639,7 +652,7 @@ static int winhttp_stream_write_buffered(
 		}
 	}
 
-	if (!WriteFile(s->post_body, buffer, len, &bytes_written, NULL)) {
+	if (!WriteFile(s->post_body, buffer, (DWORD)len, &bytes_written, NULL)) {
 		giterr_set(GITERR_OS, "Failed to write to temporary file");
 		return -1;
 	}
@@ -697,7 +710,7 @@ static int winhttp_stream_write_chunked(
 	}
 	else {
 		/* Append as much to the buffer as we can */
-		int count = min(CACHED_POST_BODY_BUF_SIZE - s->chunk_buffer_len, len);
+		int count = min(CACHED_POST_BODY_BUF_SIZE - s->chunk_buffer_len, (int)len);
 
 		if (!s->chunk_buffer)
 			s->chunk_buffer = git__malloc(CACHED_POST_BODY_BUF_SIZE);
@@ -717,7 +730,7 @@ static int winhttp_stream_write_chunked(
 			/* Is there any remaining data from the source? */
 			if (len > 0) {
 				memcpy(s->chunk_buffer, buffer, len);
-				s->chunk_buffer_len = len;
+				s->chunk_buffer_len = (unsigned int)len;
 			}
 		}
 	}
@@ -788,7 +801,8 @@ static int winhttp_connect(
 		t->use_ssl = 1;
 	}
 
-	if ((ret = gitno_extract_host_and_port(&t->host, &t->port, url, default_port)) < 0)
+	if ((ret = gitno_extract_url_parts(&t->host, &t->port, &t->user_from_url,
+					&t->pass_from_url, url, default_port)) < 0)
 		return ret;
 
 	t->path = strchr(url, '/');
@@ -944,9 +958,24 @@ static int winhttp_close(git_smart_subtransport *subtransport)
 		t->port = NULL;
 	}
 
+	if (t->user_from_url) {
+		git__free(t->user_from_url);
+		t->user_from_url = NULL;
+	}
+
+	if (t->pass_from_url) {
+		git__free(t->pass_from_url);
+		t->pass_from_url = NULL;
+	}
+
 	if (t->cred) {
 		t->cred->free(t->cred);
 		t->cred = NULL;
+	}
+
+	if (t->url_cred) {
+		t->url_cred->free(t->url_cred);
+		t->url_cred = NULL;
 	}
 
 	if (t->connection) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2012 the libgit2 contributors
+ * Copyright (C) the libgit2 contributors. All rights reserved.
  *
  * This file is part of libgit2, distributed under the GNU GPL v2 with
  * a Linking Exception. For full terms see the included COPYING file.
@@ -127,6 +127,9 @@ int git_refspec__parse(git_refspec *refspec, const char *input, bool is_fetch)
 
 void git_refspec__free(git_refspec *refspec)
 {
+	if (refspec == NULL)
+		return;
+
 	git__free(refspec->src);
 	git__free(refspec->dst);
 }
@@ -156,11 +159,19 @@ int git_refspec_src_matches(const git_refspec *refspec, const char *refname)
 	return (p_fnmatch(refspec->src, refname, 0) == 0);
 }
 
-int git_refspec_transform(char *out, size_t outlen, const git_refspec *spec, const char *name)
+int git_refspec_dst_matches(const git_refspec *refspec, const char *refname)
+{
+	if (refspec == NULL || refspec->dst == NULL)
+		return false;
+
+	return (p_fnmatch(refspec->dst, refname, 0) == 0);
+}
+
+static int refspec_transform_internal(char *out, size_t outlen, const char *from, const char *to, const char *name)
 {
 	size_t baselen, namelen;
 
-	baselen = strlen(spec->dst);
+	baselen = strlen(to);
 	if (outlen <= baselen) {
 		giterr_set(GITERR_INVALID, "Reference name too long");
 		return GIT_EBUFS;
@@ -170,8 +181,8 @@ int git_refspec_transform(char *out, size_t outlen, const git_refspec *spec, con
 	 * No '*' at the end means that it's mapped to one specific local
 	 * branch, so no actual transformation is needed.
 	 */
-	if (spec->dst[baselen - 1] != '*') {
-		memcpy(out, spec->dst, baselen + 1); /* include '\0' */
+	if (to[baselen - 1] != '*') {
+		memcpy(out, to, baselen + 1); /* include '\0' */
 		return 0;
 	}
 
@@ -179,7 +190,7 @@ int git_refspec_transform(char *out, size_t outlen, const git_refspec *spec, con
 	baselen--;
 
 	/* skip the prefix, -1 is for the '*' */
-	name += strlen(spec->src) - 1;
+	name += strlen(from) - 1;
 
 	namelen = strlen(name);
 
@@ -188,10 +199,20 @@ int git_refspec_transform(char *out, size_t outlen, const git_refspec *spec, con
 		return GIT_EBUFS;
 	}
 
-	memcpy(out, spec->dst, baselen);
+	memcpy(out, to, baselen);
 	memcpy(out + baselen, name, namelen + 1);
 
 	return 0;
+}
+
+int git_refspec_transform(char *out, size_t outlen, const git_refspec *spec, const char *name)
+{
+	return refspec_transform_internal(out, outlen, spec->src, spec->dst, name);
+}
+
+int git_refspec_rtransform(char *out, size_t outlen, const git_refspec *spec, const char *name)
+{
+	return refspec_transform_internal(out, outlen, spec->dst, spec->src, name);
 }
 
 static int refspec_transform(git_buf *out, const char *from, const char *to, const char *name)

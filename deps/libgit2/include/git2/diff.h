@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2012 the libgit2 contributors
+ * Copyright (C) the libgit2 contributors. All rights reserved.
  *
  * This file is part of libgit2, distributed under the GNU GPL v2 with
  * a Linking Exception. For full terms see the included COPYING file.
@@ -123,40 +123,6 @@ typedef enum {
 } git_diff_option_t;
 
 /**
- * Structure describing options about how the diff should be executed.
- *
- * Setting all values of the structure to zero will yield the default
- * values.  Similarly, passing NULL for the options structure will
- * give the defaults.  The default values are marked below.
- *
- * - `flags` is a combination of the `git_diff_option_t` values above
- * - `context_lines` is the number of unchanged lines that define the
- *    boundary of a hunk (and to display before and after)
- * - `interhunk_lines` is the maximum number of unchanged lines between
- *    hunk boundaries before the hunks will be merged into a one.
- * - `old_prefix` is the virtual "directory" to prefix to old file names
- *   in hunk headers (default "a")
- * - `new_prefix` is the virtual "directory" to prefix to new file names
- *   in hunk headers (default "b")
- * - `pathspec` is an array of paths / fnmatch patterns to constrain diff
- * - `max_size` is a file size (in bytes) above which a blob will be marked
- *   as binary automatically; pass a negative value to disable.
- */
-typedef struct {
-	unsigned int version;      /**< version for the struct */
-	uint32_t flags;            /**< defaults to GIT_DIFF_NORMAL */
-	uint16_t context_lines;    /**< defaults to 3 */
-	uint16_t interhunk_lines;  /**< defaults to 0 */
-	const char *old_prefix;    /**< defaults to "a" */
-	const char *new_prefix;    /**< defaults to "b" */
-	git_strarray pathspec;     /**< defaults to include all paths */
-	git_off_t max_size;        /**< defaults to 512MB */
-} git_diff_options;
-
-#define GIT_DIFF_OPTIONS_VERSION 1
-#define GIT_DIFF_OPTIONS_INIT {GIT_DIFF_OPTIONS_VERSION}
-
-/**
  * The diff list object that contains all individual file deltas.
  *
  * This is an opaque structure which will be allocated by one of the diff
@@ -241,8 +207,8 @@ typedef struct {
  * callback functions and you can use the contents to understand exactly
  * what has changed.
  *
- * The `old_file` repesents the "from" side of the diff and the `new_file`
- * repesents to "to" side of the diff.  What those means depend on the
+ * The `old_file` represents the "from" side of the diff and the `new_file`
+ * represents to "to" side of the diff.  What those means depend on the
  * function that was used to generate the diff and will be documented below.
  * You can also use the `GIT_DIFF_REVERSE` flag to flip it around.
  *
@@ -264,6 +230,64 @@ typedef struct {
 	unsigned int  similarity; /**< for RENAMED and COPIED, value 0-100 */
 	int           binary;
 } git_diff_delta;
+
+/**
+ * Diff notification callback function.
+ *
+ * The callback will be called for each file, just before the `git_delta_t`
+ * gets inserted into the diff list.
+ *
+ * When the callback:
+ * - returns < 0, the diff process will be aborted.
+ * - returns > 0, the delta will not be inserted into the diff list, but the
+ *		diff process continues.
+ * - returns 0, the delta is inserted into the diff list, and the diff process
+ *		continues.
+ */
+typedef int (*git_diff_notify_cb)(
+	const git_diff_list *diff_so_far,
+	const git_diff_delta *delta_to_add,
+	const char *matched_pathspec,
+	void *payload);
+
+/**
+ * Structure describing options about how the diff should be executed.
+ *
+ * Setting all values of the structure to zero will yield the default
+ * values.  Similarly, passing NULL for the options structure will
+ * give the defaults.  The default values are marked below.
+ *
+ * - `flags` is a combination of the `git_diff_option_t` values above
+ * - `context_lines` is the number of unchanged lines that define the
+ *    boundary of a hunk (and to display before and after)
+ * - `interhunk_lines` is the maximum number of unchanged lines between
+ *    hunk boundaries before the hunks will be merged into a one.
+ * - `old_prefix` is the virtual "directory" to prefix to old file names
+ *   in hunk headers (default "a")
+ * - `new_prefix` is the virtual "directory" to prefix to new file names
+ *   in hunk headers (default "b")
+ * - `pathspec` is an array of paths / fnmatch patterns to constrain diff
+ * - `max_size` is a file size (in bytes) above which a blob will be marked
+ *   as binary automatically; pass a negative value to disable.
+ * - `notify_cb` is an optional callback function, notifying the consumer of
+ *   which files are being examined as the diff is generated
+ * - `notify_payload` is the payload data to pass to the `notify_cb` function
+ */
+typedef struct {
+	unsigned int version;      /**< version for the struct */
+	uint32_t flags;            /**< defaults to GIT_DIFF_NORMAL */
+	uint16_t context_lines;    /**< defaults to 3 */
+	uint16_t interhunk_lines;  /**< defaults to 0 */
+	const char *old_prefix;    /**< defaults to "a" */
+	const char *new_prefix;    /**< defaults to "b" */
+	git_strarray pathspec;     /**< defaults to include all paths */
+	git_off_t max_size;        /**< defaults to 512MB */
+	git_diff_notify_cb notify_cb;
+	void *notify_payload;
+} git_diff_options;
+
+#define GIT_DIFF_OPTIONS_VERSION 1
+#define GIT_DIFF_OPTIONS_INIT {GIT_DIFF_OPTIONS_VERSION}
 
 /**
  * When iterating over a diff, callback that will be made per file.
@@ -704,6 +728,28 @@ GIT_EXTERN(size_t) git_diff_patch_num_hunks(
 	git_diff_patch *patch);
 
 /**
+ * Get line counts of each type in a patch.
+ *
+ * This helps imitate a diff --numstat type of output.  For that purpose,
+ * you only need the `total_additions` and `total_deletions` values, but we
+ * include the `total_context` line count in case you want the total number
+ * of lines of diff output that will be generated.
+ *
+ * All outputs are optional. Pass NULL if you don't need a particular count.
+ *
+ * @param total_context Count of context lines in output, can be NULL.
+ * @param total_additions Count of addition lines in output, can be NULL.
+ * @param total_deletions Count of deletion lines in output, can be NULL.
+ * @param patch The git_diff_patch object
+ * @return Number of lines in hunk or -1 if invalid hunk index
+ */
+GIT_EXTERN(int) git_diff_patch_line_stats(
+	size_t *total_context,
+	size_t *total_additions,
+	size_t *total_deletions,
+	const git_diff_patch *patch);
+
+/**
  * Get the information about a hunk in a patch
  *
  * Given a patch and a hunk index into the patch, this returns detailed
@@ -802,26 +848,48 @@ GIT_EXTERN(int) git_diff_patch_to_str(
  */
 
 /**
- * Directly run a text diff on two blobs.
+ * Directly run a diff on two blobs.
  *
  * Compared to a file, a blob lacks some contextual information. As such,
- * the `git_diff_file` parameters of the callbacks will be filled
- * accordingly to the following: `mode` will be set to 0, `path` will be set
- * to NULL. When dealing with a NULL blob, `oid` will be set to 0.
+ * the `git_diff_file` given to the callback will have some fake data; i.e.
+ * `mode` will be 0 and `path` will be NULL.
  *
- * When at least one of the blobs being dealt with is binary, the
- * `git_diff_delta` binary attribute will be set to 1 and no call to the
- * hunk_cb nor line_cb will be made.
+ * NULL is allowed for either `old_blob` or `new_blob` and will be treated
+ * as an empty blob, with the `oid` set to NULL in the `git_diff_file` data.
+ *
+ * We do run a binary content check on the two blobs and if either of the
+ * blobs looks like binary data, the `git_diff_delta` binary attribute will
+ * be set to 1 and no call to the hunk_cb nor line_cb will be made (unless
+ * you pass `GIT_DIFF_FORCE_TEXT` of course).
  *
  * @return 0 on success, GIT_EUSER on non-zero callback, or error code
  */
 GIT_EXTERN(int) git_diff_blobs(
-	git_blob *old_blob,
-	git_blob *new_blob,
+	const git_blob *old_blob,
+	const git_blob *new_blob,
 	const git_diff_options *options,
 	git_diff_file_cb file_cb,
 	git_diff_hunk_cb hunk_cb,
 	git_diff_data_cb line_cb,
+	void *payload);
+
+/**
+ * Directly run a diff between a blob and a buffer.
+ *
+ * As with `git_diff_blobs`, comparing a blob and buffer lacks some context,
+ * so the `git_diff_file` parameters to the callbacks will be faked a la the
+ * rules for `git_diff_blobs()`.
+ *
+ * @return 0 on success, GIT_EUSER on non-zero callback, or error code
+ */
+GIT_EXTERN(int) git_diff_blob_to_buffer(
+	const git_blob *old_blob,
+	const char *buffer,
+	size_t buffer_len,
+	const git_diff_options *options,
+	git_diff_file_cb file_cb,
+	git_diff_hunk_cb hunk_cb,
+	git_diff_data_cb data_cb,
 	void *payload);
 
 GIT_END_DECL

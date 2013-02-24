@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2012 the libgit2 contributors
+ * Copyright (C) the libgit2 contributors. All rights reserved.
  *
  * This file is part of libgit2, distributed under the GNU GPL v2 with
  * a Linking Exception. For full terms see the included COPYING file.
@@ -490,6 +490,15 @@ GIT_EXTERN(int) git_repository_message(char *out, size_t len, git_repository *re
  */
 GIT_EXTERN(int) git_repository_message_remove(git_repository *repo);
 
+/**
+ * Remove all the metadata associated with an ongoing git merge, including
+ * MERGE_HEAD, MERGE_MSG, etc.
+ *
+ * @param repo A repository object
+ * @return 0 on success, or error
+ */
+GIT_EXTERN(int) git_repository_merge_cleanup(git_repository *repo);
+
 typedef int (*git_repository_fetchhead_foreach_cb)(const char *ref_name,
 	const char *remote_url,
 	const git_oid *oid,
@@ -506,6 +515,22 @@ typedef int (*git_repository_fetchhead_foreach_cb)(const char *ref_name,
  */
 GIT_EXTERN(int) git_repository_fetchhead_foreach(git_repository *repo,
 	git_repository_fetchhead_foreach_cb callback,
+	void *payload);
+
+typedef int (*git_repository_mergehead_foreach_cb)(const git_oid *oid,
+	void *payload);
+
+/**
+ * If a merge is in progress, call callback 'cb' for each commit ID in the
+ * MERGE_HEAD file.
+ *
+ * @param repo A repository object
+ * @param callback Callback function
+ * @param apyload Pointer to callback data (optional)
+ * @return 0 on success, GIT_ENOTFOUND, GIT_EUSER or error
+ */
+GIT_EXTERN(int) git_repository_mergehead_foreach(git_repository *repo,
+	git_repository_mergehead_foreach_cb callback,
 	void *payload);
 
 /**
@@ -584,7 +609,7 @@ GIT_EXTERN(int) git_repository_set_head_detached(
  * updated into making it point to the peeled Commit, and 0 is returned.
  *
  * If the HEAD is already detached and points to a non commitish, the HEAD is 
- * unaletered, and -1 is returned.
+ * unaltered, and -1 is returned.
  *
  * Otherwise, the HEAD will be detached and point to the peeled Commit.
  *

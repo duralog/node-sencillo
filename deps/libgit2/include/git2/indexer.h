@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2012 the libgit2 contributors
+ * Copyright (C) the libgit2 contributors. All rights reserved.
  *
  * This file is part of libgit2, distributed under the GNU GPL v2 with
  * a Linking Exception. For full terms see the included COPYING file.
@@ -25,9 +25,13 @@ typedef struct git_transfer_progress {
 
 
 /**
- * Type for progress callbacks during indexing
+ * Type for progress callbacks during indexing.  Return a value less than zero
+ * to cancel the transfer.
+ *
+ * @param stats Structure containing information about the state of the transfer
+ * @param payload Payload provided by caller
  */
-typedef void (*git_transfer_progress_callback)(const git_transfer_progress *stats, void *payload);
+typedef int (*git_transfer_progress_callback)(const git_transfer_progress *stats, void *payload);
 
 typedef struct git_indexer git_indexer;
 typedef struct git_indexer_stream git_indexer_stream;

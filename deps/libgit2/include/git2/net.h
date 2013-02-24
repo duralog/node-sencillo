@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2012 the libgit2 contributors
+ * Copyright (C) the libgit2 contributors. All rights reserved.
  *
  * This file is part of libgit2, distributed under the GNU GPL v2 with
  * a Linking Exception. For full terms see the included COPYING file.
@@ -37,7 +37,7 @@ typedef enum {
  * Remote head description, given out on `ls` calls.
  */
 struct git_remote_head {
-	int local:1; /* available locally */
+	int local; /* available locally */
 	git_oid oid;
 	git_oid loid;
 	char *name;
