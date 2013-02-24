@@ -1,11 +1,11 @@
 {
-  "name": "gitteh",
-  "version": "0.1.0",
-  "description": "Bindings to libgit2.",
+  "name": "sencillo",
+  "version": "0.1.1",
+  "description": "Bindings to libgit2... de una forma sencilla",
   "keywords": "git, libgit2, bindings",
-  "homepage": "https://github.com/libgit2/node-gitteh",
+  "homepage": "https://github.com/duralog/node-sencillo",
 
-  "author": "Sam Day <sam.c.day@gmail.com>",
+  "author": "The Funisher <funisher@gmail.com>",
   "contributors": [
     "deoxxa <deoxxa@fknsrs.biz>",
     "Jeong, Heon <blmarket@gmail.com>",
@@ -13,12 +13,13 @@
     "Oliver Morgan <oliver.morgan@kohark.com>",
     "Sam Day <sam.c.day@gmail.com>",
     "Trent Mick <trentm@gmail.com>",
-    "Xavier Mendez <jmendeth@gmail.com>"
+    "Xavier Mendez <jmendeth@gmail.com>",
+    "The Funisher <funisher@gmail.com>"
   ],
   "maintainers": [
-    "Sam Day <sam.c.day@gmail.com>"
+    "The Funisher <funisher@gmail.com>"
   ],
-  
+
   "engines": { "node": ">= 0.6.0" },
   "dependencies": {
     "glob": ">= 2.0.6",
@@ -31,15 +32,15 @@
     "temp": "~0.4.0",
     "wrench": "~1.3.9"
   },
-  
+
   "repository": {
     "type": "git",
-    "url": "https://github.com/libgit2/node-gitteh.git"
+    "url": "https://github.com/duralog/node-sencillo.git"
   },
   "bugs": {
-    "url": "https://github.com/libgit2/node-gitteh/issues"
+    "url": "https://github.com/duralog/node-sencillo/issues"
   },
-  
+
   "main": "lib/index.js",
   "directories": {
     "src": "src",
@@ -48,7 +49,7 @@
     "example": "examples"
   },
   "scripts": {
-    "preinstall": "mkdir deps/libgit2/build && cd deps/libgit2/build && cmake -D CMAKE_BUILD_TYPE=Release -D BUILD_SHARED_LIBS=false -D BUILD_CLAR=false .. && cmake --build . && cd ../../.. && node-gyp rebuild",
+    "preinstall": "mkdir -p deps/libgit2/build && cd deps/libgit2/build && cmake -D CMAKE_BUILD_TYPE=Release -D BUILD_SHARED_LIBS=false -D BUILD_CLAR=false .. && cmake --build . && cd ../../.. && node-gyp rebuild",
     "test": "mocha"
   }
 }
