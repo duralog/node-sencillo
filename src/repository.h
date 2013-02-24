@@ -47,6 +47,7 @@ public:
   static V8_SCB(Discover); static V8_SCB(DiscoverSync);
   static V8_SCB(Open); static V8_SCB(OpenSync);
   static V8_SCB(Init); static V8_SCB(InitSync);
+  static V8_SCB(Clone); static V8_SCB(CloneSync);
 
   NODE_STYPE(Repository);
 //protected:

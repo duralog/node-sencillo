@@ -98,10 +98,10 @@ V8_SCB(Repository::Discover) {
   GITTEH_WORK_QUEUE(repo_discover);
 } GITTEH_WORK(repo_discover) { //FIXME: error vs null
   GITTEH_ASYNC_CSTR(r->start, cstart);
-  len += 7; //one for \0, more for "/.git/"
-  r->out = new char[len];
+  cstart_len += 7; //one for \0, more for "/.git/"
+  r->out = new char[cstart_len];
 
-  int status = git_repository_discover(r->out, len, cstart, r->across_fs, r->ceiling_dirs);
+  int status = git_repository_discover(r->out, cstart_len, cstart, r->across_fs, r->ceiling_dirs);
   delete [] cstart;
   if (status==GIT_OK) return;
   collectErr(status, r->err);
@@ -123,11 +123,11 @@ V8_SCB(Repository::Discover) {
 V8_SCB(Repository::DiscoverSync) {
   v8::String::Utf8Value start (args[0]);
   GITTEH_SYNC_CSTR(start, cstart);
-  len += 7; //one for \0, more for "/.git/"
-  char* out = new char[len];
+  cstart_len += 7; //one for \0, more for "/.git/"
+  char* out = new char[cstart_len];
 
   error_info info;
-  int status = git_repository_discover(out, len, cstart, v8u::Bool(args[1]), NULL); //FIXME:ceiling
+  int status = git_repository_discover(out, cstart_len, cstart, v8u::Bool(args[1]), NULL); //FIXME:ceiling
 
   delete [] out;
   delete [] cstart;
@@ -308,6 +308,115 @@ V8_SCB(Repository::InitSync) {
   V8_STHROW(composeErr(err));
 }
 
+//// Repository.clone(url, path, [bare])
+
+GITTEH_WORK_PRE(repo_clone) {
+  git_repository* out;
+  v8::String::Utf8Value* path;
+  v8::String::Utf8Value* url;
+  int bare;
+  error_info err;
+
+  Persistent<Function> cb;
+  uv_work_t req;
+};
+
+V8_SCB(Repository::Clone) {
+  int len = args.Length()-1; // don't count the callback
+  if (len < 2) V8_STHROW(v8u::RangeErr("Not enough arguments!"));
+  if (len > 3) len = 3;
+  if (!args[len]->IsFunction()) V8_STHROW(v8u::TypeErr("A Function is needed as callback!"));
+
+  repo_clone_req* r = new repo_clone_req;
+  r->url = new v8::String::Utf8Value(args[0]);
+  r->path = new v8::String::Utf8Value(args[1]);
+  if (len > 2) {
+    // enter extended mode if not only the path is given
+    r->bare = Int(args[2]);
+  }
+
+  r->cb = v8u::Persist<Function>(v8u::Cast<Function>(args[len]));
+  GITTEH_WORK_QUEUE(repo_clone);
+} GITTEH_WORK(repo_clone) {
+  GITTEH_ASYNC_CSTR(r->path, cpath);
+  GITTEH_ASYNC_CSTR(r->url, curl);
+
+  int status;
+  git_checkout_opts checkout_opts = GIT_CHECKOUT_OPTS_INIT;
+  git_clone_options opts = GIT_CLONE_OPTIONS_INIT;
+  checkout_opts.checkout_strategy = GIT_CHECKOUT_SAFE_CREATE;
+  // TODO: add progress callbacks
+  //checkout_opts.progress_cb = checkout_progress;
+  //checkout_opts.progress_payload = &pd;
+  opts.checkout_opts = checkout_opts;
+  //opts.fetch_progress_cb = &fetch_progress;
+  //opts.fetch_progress_payload = &pd;
+  //opts.cred_acquire_cb = cred_acquire;
+  /*git_clone_options opts = {
+    GIT_CLONE_OPTIONS_VERSION,
+    checkout_opts,
+    r->bare,
+    NULL, // transfer_progress_callback (TODO)
+    NULL, // void* fetch_progrss_payload (TODO)
+    NULL // remote_name
+  };*/
+  status = git_clone(&r->out, curl, cpath, &opts);
+
+  if (status == GIT_OK) {
+    delete [] cpath;
+  } else {
+    collectErr(status, r->err);
+    delete [] cpath;
+    r->out = NULL;
+  }
+} GITTEH_WORK_AFTER(repo_clone) {
+  v8::Handle<v8::Value> argv [2];
+  if (r->out) {
+    argv[0] = v8::Null();
+    argv[1] = (new Repository(r->out))->Wrapped();
+  } else {
+    argv[0] = composeErr(r->err);
+    argv[1] = v8::Null();
+  }
+  GITTEH_WORK_CALL(2);
+} GITTEH_END
+
+V8_SCB(Repository::CloneSync) {
+  v8::String::Utf8Value url (args[0]);
+  GITTEH_SYNC_CSTR(url, curl);
+  v8::String::Utf8Value path (args[1]);
+  GITTEH_SYNC_CSTR(path, cpath);
+
+  int status;
+  git_repository* out;
+  error_info err;
+  git_checkout_opts checkout_opts = GIT_CHECKOUT_OPTS_INIT;
+  git_clone_options opts = GIT_CLONE_OPTIONS_INIT;
+  checkout_opts.checkout_strategy = GIT_CHECKOUT_SAFE_CREATE;
+  // TODO: add progress callbacks
+  //checkout_opts.progress_cb = checkout_progress;
+  //checkout_opts.progress_payload = &pd;
+  opts.checkout_opts = checkout_opts;
+  //opts.fetch_progress_cb = &fetch_progress;
+  //opts.fetch_progress_payload = &pd;
+  //opts.cred_acquire_cb = cred_acquire;
+  /*git_clone_options opts = {
+    GIT_CLONE_OPTIONS_VERSION,
+    checkout_opts,
+    (args.Length() > 2 ? Int(args[2]) : 0), // bare
+    NULL, // transfer_progress_callback (TODO)
+    NULL, // void* fetch_progrss_payload (TODO)
+    NULL  // remote_name
+  };*/
+
+  status = git_clone(&out, curl, cpath, &opts);
+
+  delete [] cpath;
+  if (status == GIT_OK) return (new Repository(out))->Wrapped();
+  collectErr(status, err);
+  V8_STHROW(composeErr(err));
+}
+
 
 NODE_ETYPE(Repository, "Repository") {
   V8_DEF_GET("workdir", GetWorkdir);
@@ -324,6 +433,9 @@ NODE_ETYPE(Repository, "Repository") {
 
   func->Set(Symbol("init"), Func(Init)->GetFunction());
   func->Set(Symbol("initSync"), Func(InitSync)->GetFunction());
+
+  func->Set(Symbol("clone"), Func(Clone)->GetFunction());
+  func->Set(Symbol("cloneSync"), Func(CloneSync)->GetFunction());
 
   //ENUM: repository states -- STATE
   Local<v8::Object> stateHash = v8u::Obj();
