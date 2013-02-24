@@ -32,8 +32,8 @@ namespace gitteh {
 
 void check(int status) {
   if (status==GIT_OK) return;
-  //TODO: wrap & throw error
-  V8_THROW(v8u::Err("Native libgit2 error."));
+  const git_error* err = giterr_last();
+  V8_THROW(v8u::Err(err->message));
 }
 
 void collectErr(int status, error_info& info) {
@@ -41,8 +41,8 @@ void collectErr(int status, error_info& info) {
 }
 
 v8::Local<v8::Value> composeErr(error_info& info) {
-  //TODO
-  return v8u::Err("Native libgit2 error.");
+  const git_error* err = giterr_last();
+  return v8u::Err(err->message);
 }
 
 };
