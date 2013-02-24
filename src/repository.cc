@@ -87,13 +87,13 @@ V8_SCB(Repository::Discover) {
   if (len < 1) V8_STHROW(v8u::RangeErr("Not enough arguments!"));
   if (len > 3) len = 3;
   if (!args[len]->IsFunction()) V8_STHROW(v8u::TypeErr("A Function is needed as callback!"));
-  
+
   repo_discover_req* r = new repo_discover_req;
   r->start = new v8::String::Utf8Value(args[0]);
-  
+
   r->across_fs = len>=2 ? v8u::Bool(args[1]) : false;
   r->ceiling_dirs = NULL; //FIXME:ceiling
-  
+
   r->cb = v8u::Persist<Function>(v8u::Cast<Function>(args[len]));
   GITTEH_WORK_QUEUE(repo_discover);
 } GITTEH_WORK(repo_discover) { //FIXME: error vs null
@@ -125,10 +125,10 @@ V8_SCB(Repository::DiscoverSync) {
   GITTEH_SYNC_CSTR(start, cstart);
   len += 7; //one for \0, more for "/.git/"
   char* out = new char[len];
-  
+
   error_info info;
   int status = git_repository_discover(out, len, cstart, v8u::Bool(args[1]), NULL); //FIXME:ceiling
-  
+
   delete [] out;
   delete [] cstart;
   if (status == GIT_OK) return v8u::Str(out);
@@ -198,7 +198,7 @@ V8_SCB(Repository::Open) {
 V8_SCB(Repository::OpenSync) {
   v8::String::Utf8Value path (args[0]);
   GITTEH_SYNC_CSTR(path, cpath);
-  
+
   int status;
   git_repository* out;
   error_info err;
@@ -212,13 +212,101 @@ V8_SCB(Repository::OpenSync) {
     status = git_repository_open_ext(&out, cpath, flags, ceiling_dirs);
     //if (ceiling_dirs) delete [] ceiling_dirs;
   } else status = git_repository_open(&out, cpath);
-  
+
   delete [] cpath;
   if (status == GIT_OK) return (new Repository(out))->Wrapped();
   collectErr(status, err);
   V8_STHROW(composeErr(err));
 }
 
+//// Repository.init(...)
+
+GITTEH_WORK_PRE(repo_init) {
+  git_repository* out;
+  v8::String::Utf8Value* path;
+  int flags;
+  error_info err;
+
+  Persistent<Function> cb;
+  uv_work_t req;
+};
+
+V8_SCB(Repository::Init) {
+  int len = args.Length()-1; // don't count the callback
+  if (len < 1) V8_STHROW(v8u::RangeErr("Not enough arguments!"));
+  if (len > 3) len = 3;
+  if (!args[len]->IsFunction()) V8_STHROW(v8u::TypeErr("A Function is needed as callback!"));
+
+  repo_init_req* r = new repo_init_req;
+  r->path = new v8::String::Utf8Value(args[0]);
+  if (len > 1) {
+    // enter extended mode if not only the path is given
+    r->flags = Int(args[1]);
+  }
+
+  r->cb = v8u::Persist<Function>(v8u::Cast<Function>(args[len]));
+  GITTEH_WORK_QUEUE(repo_init);
+} GITTEH_WORK(repo_init) {
+  GITTEH_ASYNC_CSTR(r->path, cpath);
+
+  int status;
+  git_repository_init_options opts = {
+    GIT_REPOSITORY_INIT_OPTIONS_VERSION,
+    r->flags | GIT_REPOSITORY_INIT_MKPATH,
+    GIT_REPOSITORY_INIT_SHARED_UMASK,
+    NULL, // workdir_path
+    NULL, // description (TODO)
+    NULL, // template_path
+    NULL, // initial_head
+    NULL  // origin_url (TODO)
+  };
+  status = git_repository_init_ext(&r->out, cpath, &opts);
+
+  if (status == GIT_OK) {
+    delete [] cpath;
+  } else {
+    collectErr(status, r->err);
+    delete [] cpath;
+    r->out = NULL;
+  }
+} GITTEH_WORK_AFTER(repo_init) {
+  v8::Handle<v8::Value> argv [2];
+  if (r->out) {
+    argv[0] = v8::Null();
+    argv[1] = (new Repository(r->out))->Wrapped();
+  } else {
+    argv[0] = composeErr(r->err);
+    argv[1] = v8::Null();
+  }
+  GITTEH_WORK_CALL(2);
+} GITTEH_END
+
+V8_SCB(Repository::InitSync) {
+  v8::String::Utf8Value path (args[0]);
+  GITTEH_SYNC_CSTR(path, cpath);
+
+  int status;
+  git_repository* out;
+  error_info err;
+  git_repository_init_options opts = {
+    GIT_REPOSITORY_INIT_OPTIONS_VERSION, // default
+    // this will surely change, as I will probably make this collect this data from an object
+    (args.Length() > 1 ? Int(args[1]) : 0) | GIT_REPOSITORY_INIT_MKPATH,
+    GIT_REPOSITORY_INIT_SHARED_UMASK,
+    NULL, // workdir_path
+    NULL, // description (TODO)
+    NULL, // template_path
+    NULL, // initial_head
+    NULL  // origin_url (TODO)
+  };
+
+  status = git_repository_init_ext(&out, cpath, &opts);
+
+  delete [] cpath;
+  if (status == GIT_OK) return (new Repository(out))->Wrapped();
+  collectErr(status, err);
+  V8_STHROW(composeErr(err));
+}
 
 
 NODE_ETYPE(Repository, "Repository") {
@@ -233,6 +321,9 @@ NODE_ETYPE(Repository, "Repository") {
 
   func->Set(Symbol("open"), Func(Open)->GetFunction());
   func->Set(Symbol("openSync"), Func(OpenSync)->GetFunction());
+
+  func->Set(Symbol("init"), Func(Init)->GetFunction());
+  func->Set(Symbol("initSync"), Func(InitSync)->GetFunction());
 
   //ENUM: repository states -- STATE
   Local<v8::Object> stateHash = v8u::Obj();

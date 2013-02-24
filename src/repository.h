@@ -46,6 +46,7 @@ public:
   // only succeed if absolute paths are given.
   static V8_SCB(Discover); static V8_SCB(DiscoverSync);
   static V8_SCB(Open); static V8_SCB(OpenSync);
+  static V8_SCB(Init); static V8_SCB(InitSync);
 
   NODE_STYPE(Repository);
 //protected:
