@@ -74,6 +74,12 @@ V8_SCB(_isAbstract);
   delete r;                                                                    \
   if (try_catch.HasCaught()) node::FatalException(try_catch)
 
+#define SENCILLO_CB_CALL(CB, ARGC)                                                 \
+  v8::TryCatch try_catch;                                                      \
+  r->cb->Call(v8::Context::GetCurrent()->Global(), ARGC, argv);                \
+  r->cb.Dispose();                                                             \
+  delete r;                                                                    \
+  if (try_catch.HasCaught()) node::FatalException(try_catch)
 
 //Work callbacks block-macros
 #define GITTEH_WORK_PRE(IDENTIFIER)                                            \
