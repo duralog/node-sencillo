@@ -1,9 +1,15 @@
+
+## v0.1.1 - 02.03.2013
+* first of all, this came from a [branch of gitteh](https://github.com/jmendeth/node-gitteh). this is not gitteh original! thanks @jmendeth!!
+* I added init/initSync and clone/cloneSync
+* changed namespaces from `gitteh` to `sencillo`
+* updated libgit2
+
 ## PRE v1.0.0 - 06/01/12
 @jmendeth After two years of inactivity, everything
 is setup and up-to-date for v1 development to start!
 
 Some areas are still unclear though.
-
 
 ## v0.1.0 - 03/04/11
 * Heavy refactors to bring gitteh up to date with libgit2 0.11.0.
@@ -16,7 +22,7 @@ Some areas are still unclear though.
 
 
 ## v0.0.4 - 29/03/11
-* Added support for working with git indexes. 
+* Added support for working with git indexes.
 * Fixed issues that could cause asynchronous retrieval of objects to fail miserably.
 
 

@@ -28,7 +28,7 @@
 #include "git2.h"
 
 
-namespace gitteh {
+namespace sencillo {
 
 // prepare input for processing
 inline void prepare(const char* in, char* out, int& len) {
@@ -41,7 +41,7 @@ inline void prepare(const char* in, char* out, int& len) {
 // another approach would be to call prettify() with no buffer,
 // allocate the size and call again, but this is faster
 V8_SCB(Prettify) {
-  
+
   // Allocate
   v8::String::Utf8Value msg (args[0]);
   int len = msg.length();

@@ -35,7 +35,7 @@ using v8::Local;
 using v8u::Symbol;
 using v8u::Func;
 
-namespace gitteh {
+namespace sencillo {
 
 Oid::Oid(const git_oid& other) {
   git_oid_cpy(&oid, &other);
@@ -121,16 +121,16 @@ V8_CB(Oid::ParseArray) {
   Local<v8::Array> input = v8u::Arr(args[0]);
   int len = input->Length();
   Local<v8::Array> output = v8u::Arr(len);
-  
+
   for (int i = 0; i < len; i++) {
     v8::String::Utf8Value str (input->Get(i));
-    
+
     Oid* inst = new Oid;
     v8::Local<v8::Object> ret = inst->Wrapped();
 
     if (*str == NULL) check(git_oid_fromstrn(&inst->oid, "", 0));
     else check(git_oid_fromstrn(&inst->oid, *str, str.length()));
-    
+
     output->Set(i, ret);
   }
 

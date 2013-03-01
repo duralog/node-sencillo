@@ -26,9 +26,9 @@
 #include "common.h"
 
 
-namespace gitteh {
+namespace sencillo {
 
-GITTEH_ERROR_THROWER(_isAbstract,
+SENCILLO_ERROR_THROWER(_isAbstract,
   v8u::TypeErr("This function is meant to be overriden."))
 
 };

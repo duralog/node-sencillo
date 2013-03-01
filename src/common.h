@@ -23,15 +23,15 @@
  * THE SOFTWARE.
  */
 
-#ifndef GITTEH_COMMON_H
-#define	GITTEH_COMMON_H
+#ifndef SENCILLO_COMMON_H
+#define	SENCILLO_COMMON_H
 
 #include "v8u.hpp"
 #include "cvv8/convert.hpp"
 
-namespace gitteh {
+namespace sencillo {
 
-#define GITTEH_ERROR_THROWER(IDENTIFIER, ERR)                                  \
+#define SENCILLO_ERROR_THROWER(IDENTIFIER, ERR)                                  \
   V8_SCB(IDENTIFIER) {                                                         \
     v8::HandleScope handle;                                                    \
     return v8::ThrowException(ERR);                                            \
@@ -50,25 +50,25 @@ V8_SCB(_isAbstract);
 
 //Unwrapping and starting work statement-macros
 //TODO: DO SOMETHING WITH STRINGS THAT CONTAIN '\0'
-#define GITTEH_ASYNC_CSTR(OBJ, VAR)                                            \
+#define SENCILLO_ASYNC_CSTR(OBJ, VAR)                                            \
   int VAR##_len = OBJ->length();                                               \
   char* VAR = new char[VAR##_len+1];                                           \
   memcpy(VAR, **OBJ, VAR##_len);                                               \
   delete OBJ;                                                                  \
   VAR[VAR##_len] = 0
-#define GITTEH_SYNC_CSTR(OBJ, VAR)                                             \
+#define SENCILLO_SYNC_CSTR(OBJ, VAR)                                             \
   int VAR##_len = OBJ.length();                                                \
   char* VAR = new char[VAR##_len+1];                                           \
   memcpy(VAR, *OBJ, VAR##_len);                                                \
   VAR[VAR##_len] = 0
 
-#define GITTEH_WORK_UNWRAP(IDENTIFIER)                                         \
+#define SENCILLO_WORK_UNWRAP(IDENTIFIER)                                         \
   IDENTIFIER##_req* r = (IDENTIFIER##_req*)req->data
-#define GITTEH_WORK_QUEUE(IDENTIFIER)                                          \
+#define SENCILLO_WORK_QUEUE(IDENTIFIER)                                          \
   r->req.data = r;                                                             \
   return v8::Integer::New(uv_queue_work(uv_default_loop(), &r->req,            \
                                         IDENTIFIER##_work, IDENTIFIER##_after))
-#define GITTEH_WORK_CALL(ARGC)                                                 \
+#define SENCILLO_WORK_CALL(ARGC)                                                 \
   v8::TryCatch try_catch;                                                      \
   r->cb->Call(v8::Context::GetCurrent()->Global(), ARGC, argv);                \
   r->cb.Dispose();                                                             \
@@ -83,26 +83,26 @@ V8_SCB(_isAbstract);
   if (try_catch.HasCaught()) node::FatalException(try_catch)
 
 //Work callbacks block-macros
-#define GITTEH_WORK_PRE(IDENTIFIER)                                            \
+#define SENCILLO_WORK_PRE(IDENTIFIER)                                            \
   void IDENTIFIER##_work(uv_work_t *req);                                      \
   void IDENTIFIER##_after(uv_work_t *req);                                     \
   struct IDENTIFIER##_req
 
-#define GITTEH_WORK(IDENTIFIER)                                                \
+#define SENCILLO_WORK(IDENTIFIER)                                                \
   void IDENTIFIER##_work(uv_work_t *req) {                                     \
-    GITTEH_WORK_UNWRAP(IDENTIFIER);
+    SENCILLO_WORK_UNWRAP(IDENTIFIER);
 
-#define GITTEH_WORK_AFTER(IDENTIFIER) }                                        \
+#define SENCILLO_WORK_AFTER(IDENTIFIER) }                                        \
   void IDENTIFIER##_after(uv_work_t *req) {                                    \
     v8::HandleScope scope;                                                     \
-    GITTEH_WORK_UNWRAP(IDENTIFIER);
+    SENCILLO_WORK_UNWRAP(IDENTIFIER);
 
-#define GITTEH_END }
+#define SENCILLO_END }
 
-#define GITTEH_CHECK_CB_ARGS(MIN)                                              \
+#define SENCILLO_CHECK_CB_ARGS(MIN)                                              \
   if (len < 1) V8_STHROW(v8u::RangeErr("Not enough arguments!"));
 
 };
 
-#endif	/* GITTEH_COMMON_H */
+#endif	/* SENCILLO_COMMON_H */
 

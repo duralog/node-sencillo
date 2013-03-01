@@ -23,16 +23,14 @@
  * THE SOFTWARE.
  */
 
-#ifndef GITTEH_REFERENCE_H
-#define	GITTEH_REFERENCE_H
+#ifndef SENCILLO_REFERENCE_H
+#define	SENCILLO_REFERENCE_H
 
 #include "git2.h"
-
 #include "v8u.hpp"
-
 #include "object.h"
 
-namespace gitteh {
+namespace sencillo {
 
 class Reference : public GitObject {
 public:
@@ -51,5 +49,5 @@ protected:
 
 };
 
-#endif	/* GITTEH_REFERENCE_H */
+#endif	/* SENCILLO_REFERENCE_H */
 

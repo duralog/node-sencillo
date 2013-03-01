@@ -44,7 +44,7 @@ using v8u::Int;
 using v8u::Func;
 using v8::Local;
 
-namespace gitteh {
+namespace sencillo {
 
 inline Local<v8::Object> libgit2Version() {
   int major, minor, revision;
@@ -79,6 +79,6 @@ NODE_DEF_MAIN() {
   GitObject::init(target);
   Repository::init(target);
   Reference::init(target);
-} NODE_DEF_MAIN_END(gitteh)
+} NODE_DEF_MAIN_END(sencillo)
 
 };

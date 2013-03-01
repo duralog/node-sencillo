@@ -28,7 +28,7 @@
 #include "common.h"
 
 
-namespace gitteh {
+namespace sencillo {
 
 // Deny instances
 V8_ESCTOR(GitObject) { V8_CTOR_NO_ALL }

@@ -23,18 +23,18 @@
  * THE SOFTWARE.
  */
 
-#ifndef GITTEH_ERROR_H
-#define	GITTEH_ERROR_H
+#ifndef SENCILLO_ERROR_H
+#define	SENCILLO_ERROR_H
 
 #include "git2.h"
 
 #include "v8u.hpp"
 
-namespace gitteh {
+namespace sencillo {
 
 //  class GitObject : public node::ObjectWrap {
 //  public:
-//    
+//
 //  protected:
 //    git_object obj;
 //  };
@@ -57,7 +57,7 @@ void check(int status);
 /*
  * Collect information about a status error (which is *known* to be != OK).
  * Use for composing the JS error object later with `composeErr`.
- * 
+ *
  * This is needed because you can't call V8 functions outside JS threads,
  * (i.e. inside uv_queue_work) which is where the errors occur.
  */
@@ -71,5 +71,5 @@ v8::Local<v8::Value> composeErr(error_info& info);
 
 };
 
-#endif	/* GITTEH_ERROR_H */
+#endif	/* SENCILLO_ERROR_H */
 

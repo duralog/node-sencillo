@@ -1,6 +1,8 @@
-# Gitteh
+# Sencillo
 
-**NOTE: Gitteh is currently undergoing heavy refactoring/rewriting to both not suck and be compatible with v0.17.0. Watch this space!**
+**NOTE: Sencillo is currently undergoing heavy refactoring/rewriting. It will eventually look quite different from what it does now. the idea is to make good bindings, and also make the simple things (common every day commands) as easy as possible to use.
+
+# OLD DOCS
 
 ## What?
 
@@ -15,16 +17,16 @@ Node bindings to the excellent [libgit2](http://libgit2.github.com) C library. T
 
 ## Why?
 
-Why not? Libgit2 is an excellent way to work with a Git repository in a well-defined and speedy manner. 
+Why not? Libgit2 is an excellent way to work with a Git repository in a well-defined and speedy manner.
 
-Or you could, you know, manually execute `git` CLI commands and parse stdout. Have fun with that. 
+Or you could, you know, manually execute `git` CLI commands and parse stdout. Have fun with that.
 
 ## How?
 
 Installation can be done via npm.
 
 	npm install gitteh
-	
+
 Currently, installing Gitteh via NPM will mean that Gitteh will compile it's own
 bundled version of libgit2, even if it's already installed on your system. I've
 done this because libgit2 is releasing quite rapidly and each release is breaking
@@ -34,7 +36,3 @@ version of libgit2 with each release of Gitteh.
 The current version of Gitteh requires libgit2 v0.11.0.
 
 [Documentation can be found here.](http://libgit2.github.com/node-gitteh/docs/index.html). You should also check out the examples in the examples/ dir in the repo.
-
-## Halp?
-
-Actually, yes. I'd really appreciate any contributions on this project. Check out the TODO to see what still needs to be done, then get in contact with me BEFORE you start coding so I can make sure you're not doubling up work that's already under wraps :)

@@ -39,7 +39,7 @@ using v8::Local;
 using v8::Persistent;
 using v8::Function;
 
-namespace gitteh {
+namespace sencillo {
 
 Reference::Reference(git_reference* ptr): ref(ptr), invalid(false) {}
 Reference::~Reference() {
@@ -55,7 +55,7 @@ V8_ESCTOR(Reference) { V8_CTOR_NO_JS }
 
 //// Reference.lookup(...)
 
-GITTEH_WORK_PRE(ref_lookup) {
+SENCILLO_WORK_PRE(ref_lookup) {
   v8::String::Utf8Value* name;
   git_repository* repo;
   git_reference* out;
@@ -76,16 +76,16 @@ V8_SCB(Reference::Lookup) {
   r->name = new v8::String::Utf8Value(args[1]);
 
   r->cb = v8u::Persist<Function>(v8u::Cast<Function>(args[2]));
-  GITTEH_WORK_QUEUE(ref_lookup);
-} GITTEH_WORK(ref_lookup) {
-  GITTEH_ASYNC_CSTR(r->name, cname);
+  SENCILLO_WORK_QUEUE(ref_lookup);
+} SENCILLO_WORK(ref_lookup) {
+  SENCILLO_ASYNC_CSTR(r->name, cname);
 
   int status = git_reference_lookup(&r->out, r->repo, cname);
   delete [] cname;
   if (status == GIT_OK) return;
   collectErr(status, r->err);
   r->out = NULL;
-} GITTEH_WORK_AFTER(ref_lookup) {
+} SENCILLO_WORK_AFTER(ref_lookup) {
   v8::Handle<v8::Value> argv [2];
   if (r->out) {
     argv[0] = v8::Null();
@@ -94,13 +94,13 @@ V8_SCB(Reference::Lookup) {
     argv[0] = composeErr(r->err);
     argv[1] = v8::Null();
   }
-  GITTEH_WORK_CALL(2);
-} GITTEH_END
+  SENCILLO_WORK_CALL(2);
+} SENCILLO_END
 
 
 //// Reference.resolve(...)
 
-GITTEH_WORK_PRE(ref_sresolve) {
+SENCILLO_WORK_PRE(ref_sresolve) {
   v8::String::Utf8Value* name;
   git_repository* repo;
   git_oid out; bool ok;
@@ -121,15 +121,15 @@ V8_SCB(Reference::StaticResolve) {
   r->name = new v8::String::Utf8Value(args[1]);
 
   r->cb = v8u::Persist<Function>(v8u::Cast<Function>(args[2]));
-  GITTEH_WORK_QUEUE(ref_sresolve);
-} GITTEH_WORK(ref_sresolve) {
-  GITTEH_ASYNC_CSTR(r->name, cname);
-  
+  SENCILLO_WORK_QUEUE(ref_sresolve);
+} SENCILLO_WORK(ref_sresolve) {
+  SENCILLO_ASYNC_CSTR(r->name, cname);
+
   int status = git_reference_name_to_id(&r->out, r->repo, cname);
   delete [] cname;
   if ((r->ok= status == GIT_OK)) return;
   collectErr(status, r->err);
-} GITTEH_WORK_AFTER(ref_sresolve) {
+} SENCILLO_WORK_AFTER(ref_sresolve) {
   v8::Handle<v8::Value> argv [2];
   if (r->ok) {
     argv[0] = v8::Null();
@@ -138,23 +138,23 @@ V8_SCB(Reference::StaticResolve) {
     argv[0] = composeErr(r->err);
     argv[1] = v8::Null();
   }
-  GITTEH_WORK_CALL(2);
-} GITTEH_END
+  SENCILLO_WORK_CALL(2);
+} SENCILLO_END
 
 V8_SCB(Reference::StaticResolveSync) {
   v8::Local<v8::Object> repo_obj;
   if (!(args[0]->IsObject() && Repository::HasInstance(repo_obj = v8u::Obj(args[0]))))
     V8_STHROW(v8u::TypeErr("Repository needed as first argument."));
-  
+
   git_repository* repo = node::ObjectWrap::Unwrap<Repository>(repo_obj)->repo;
   v8::String::Utf8Value name (args[1]);
-  GITTEH_SYNC_CSTR(name, cname);
-  
+  SENCILLO_SYNC_CSTR(name, cname);
+
   git_oid oid;
   error_info err;
   int status = git_reference_name_to_id(&oid, repo, cname);
   delete [] cname;
-  
+
   if (status == GIT_OK) return (new Oid(oid))->Wrapped();
   collectErr(status, err);
   V8_STHROW(composeErr(err));
@@ -164,12 +164,12 @@ V8_SCB(Reference::StaticResolveSync) {
 
 NODE_ETYPE(Reference, "Reference") {
   //TODO
-  
+
   Local<Function> func = templ->GetFunction();
-  
+
   func->Set(Symbol("lookup"), Func(Lookup)->GetFunction());
 //  func->Set(Symbol("lookupSync"), Func(LookupSync)->GetFunction());
-  
+
   func->Set(Symbol("resolve"), Func(StaticResolve)->GetFunction());
   func->Set(Symbol("resolveSync"), Func(StaticResolveSync)->GetFunction());
 } NODE_TYPE_END()

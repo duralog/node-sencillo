@@ -23,14 +23,14 @@
  * THE SOFTWARE.
  */
 
-#ifndef GITTEH_OID_H
-#define	GITTEH_OID_H
+#ifndef SENCILLO_OID_H
+#define	SENCILLO_OID_H
 
 #include "git2.h"
 
 #include "v8u.hpp"
 
-namespace gitteh {
+namespace sencillo {
 
 #define GITTEH_OID_REPR "<Oid %s>"
 #define GITTEH_OID_REPR_HEX_LEN 10
@@ -66,5 +66,5 @@ protected:
 
 };
 
-#endif	/* GITTEH_OID_H */
+#endif	/* SENCILLO_OID_H */
 

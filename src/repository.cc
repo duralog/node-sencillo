@@ -47,7 +47,7 @@ using v8::Function;
 # define UNUSED(x) x
 #endif
 
-namespace gitteh {
+namespace sencillo {
 
 Repository::Repository(git_repository* ptr): repo(ptr) {}
 Repository::~Repository() {
@@ -103,7 +103,7 @@ static Persistent<v8::String> stats_onprogress_symbol;
 
 //// Repository.discover(...)
 
-GITTEH_WORK_PRE(repo_discover) {
+SENCILLO_WORK_PRE(repo_discover) {
   bool across_fs;
   v8::String::Utf8Value* start;
   char* ceiling_dirs;
@@ -127,9 +127,9 @@ V8_SCB(Repository::Discover) {
   r->ceiling_dirs = NULL; //FIXME:ceiling
 
   r->cb = v8u::Persist<Function>(v8u::Cast<Function>(args[len]));
-  GITTEH_WORK_QUEUE(repo_discover);
-} GITTEH_WORK(repo_discover) { //FIXME: error vs null
-  GITTEH_ASYNC_CSTR(r->start, cstart);
+  SENCILLO_WORK_QUEUE(repo_discover);
+} SENCILLO_WORK(repo_discover) { //FIXME: error vs null
+  SENCILLO_ASYNC_CSTR(r->start, cstart);
   cstart_len += 7; //one for \0, more for "/.git/"
   r->out = new char[cstart_len];
 
@@ -139,7 +139,7 @@ V8_SCB(Repository::Discover) {
   collectErr(status, r->err);
   delete [] r->out;
   r->out = NULL;
-} GITTEH_WORK_AFTER(repo_discover) {
+} SENCILLO_WORK_AFTER(repo_discover) {
   v8::Handle<v8::Value> argv [2];
   if (r->out) {
     argv[0] = v8::Null();
@@ -149,12 +149,12 @@ V8_SCB(Repository::Discover) {
     argv[0] = composeErr(r->err);
     argv[1] = v8::Null();
   }
-  GITTEH_WORK_CALL(2);
-} GITTEH_END
+  SENCILLO_WORK_CALL(2);
+} SENCILLO_END
 
 V8_SCB(Repository::DiscoverSync) {
   v8::String::Utf8Value start (args[0]);
-  GITTEH_SYNC_CSTR(start, cstart);
+  SENCILLO_SYNC_CSTR(start, cstart);
   cstart_len += 7; //one for \0, more for "/.git/"
   char* out = new char[cstart_len];
 
@@ -171,7 +171,7 @@ V8_SCB(Repository::DiscoverSync) {
 
 //// Repository.open(...)
 
-GITTEH_WORK_PRE(repo_open) {
+SENCILLO_WORK_PRE(repo_open) {
   git_repository* out;
   v8::String::Utf8Value* path;
   int flags;
@@ -200,9 +200,9 @@ V8_SCB(Repository::Open) {
   }
 
   r->cb = v8u::Persist<Function>(v8u::Cast<Function>(args[len]));
-  GITTEH_WORK_QUEUE(repo_open);
-} GITTEH_WORK(repo_open) {
-  GITTEH_ASYNC_CSTR(r->path, cpath);
+  SENCILLO_WORK_QUEUE(repo_open);
+} SENCILLO_WORK(repo_open) {
+  SENCILLO_ASYNC_CSTR(r->path, cpath);
 
   int status;
   if (r->ext) status = git_repository_open_ext(&r->out, cpath, r->flags, r->ceiling_dirs);
@@ -215,7 +215,7 @@ V8_SCB(Repository::Open) {
     delete [] cpath;
     r->out = NULL;
   }
-} GITTEH_WORK_AFTER(repo_open) {
+} SENCILLO_WORK_AFTER(repo_open) {
   v8::Handle<v8::Value> argv [2];
   if (r->out) {
     argv[0] = v8::Null();
@@ -224,12 +224,12 @@ V8_SCB(Repository::Open) {
     argv[0] = composeErr(r->err);
     argv[1] = v8::Null();
   }
-  GITTEH_WORK_CALL(2);
-} GITTEH_END
+  SENCILLO_WORK_CALL(2);
+} SENCILLO_END
 
 V8_SCB(Repository::OpenSync) {
   v8::String::Utf8Value path (args[0]);
-  GITTEH_SYNC_CSTR(path, cpath);
+  SENCILLO_SYNC_CSTR(path, cpath);
 
   int status;
   git_repository* out;
@@ -253,7 +253,7 @@ V8_SCB(Repository::OpenSync) {
 
 //// Repository.init(path, [flags], callback)
 
-GITTEH_WORK_PRE(repo_init) {
+SENCILLO_WORK_PRE(repo_init) {
   git_repository* out;
   v8::String::Utf8Value* path;
   int flags;
@@ -280,9 +280,9 @@ V8_SCB(Repository::Init) {
   }*/
 
   r->cb = v8u::Persist<Function>(v8u::Cast<Function>(args[len]));
-  GITTEH_WORK_QUEUE(repo_init);
-} GITTEH_WORK(repo_init) {
-  GITTEH_ASYNC_CSTR(r->path, cpath);
+  SENCILLO_WORK_QUEUE(repo_init);
+} SENCILLO_WORK(repo_init) {
+  SENCILLO_ASYNC_CSTR(r->path, cpath);
 
   int status;
   git_repository_init_options opts = {
@@ -304,7 +304,7 @@ V8_SCB(Repository::Init) {
     delete [] cpath;
     r->out = NULL;
   }
-} GITTEH_WORK_AFTER(repo_init) {
+} SENCILLO_WORK_AFTER(repo_init) {
   v8::Handle<v8::Value> argv [2];
   if (r->out) {
     argv[0] = v8::Null();
@@ -313,12 +313,12 @@ V8_SCB(Repository::Init) {
     argv[0] = composeErr(r->err);
     argv[1] = v8::Null();
   }
-  GITTEH_WORK_CALL(2);
-} GITTEH_END
+  SENCILLO_WORK_CALL(2);
+} SENCILLO_END
 
 V8_SCB(Repository::InitSync) {
   v8::String::Utf8Value path (args[0]);
-  GITTEH_SYNC_CSTR(path, cpath);
+  SENCILLO_SYNC_CSTR(path, cpath);
 
   int status;
   git_repository* out;
@@ -362,7 +362,7 @@ static int fetch_progress(const git_transfer_progress *stats, void *payload) {
     o->Set(stats_total_symbol, v8::Number::New(stats->total_objects));
 
     v8::Handle<v8::Value> argv[] = { o };
-    gitteh::FireCallback(pd->cb, 1, argv);
+    sencillo::FireCallback(pd->cb, 1, argv);
   }
   //TODO: canceling of fetch
   return 0;
@@ -377,11 +377,11 @@ static void checkout_progress(const char *path, size_t cur, size_t tot, void *pa
     o->Set(stats_steps_symbol, v8::Number::New(tot));
     //o->Set(stats_path_symbol, v8::String::New(path));
     v8::Handle<v8::Value> argv[] = { o };
-    gitteh::FireCallback(pd->cb, 1, argv);
+    sencillo::FireCallback(pd->cb, 1, argv);
   }
 }
 
-GITTEH_WORK_PRE(repo_clone) {
+SENCILLO_WORK_PRE(repo_clone) {
   git_repository* out;
   v8::String::Utf8Value* path;
   v8::String::Utf8Value* url;
@@ -418,10 +418,10 @@ V8_SCB(Repository::Clone) {
     } else printf("NO progress func\n");
   }
 
-  GITTEH_WORK_QUEUE(repo_clone);
-} GITTEH_WORK(repo_clone) {
-  GITTEH_ASYNC_CSTR(r->path, cpath);
-  GITTEH_ASYNC_CSTR(r->url, curl);
+  SENCILLO_WORK_QUEUE(repo_clone);
+} SENCILLO_WORK(repo_clone) {
+  SENCILLO_ASYNC_CSTR(r->path, cpath);
+  SENCILLO_ASYNC_CSTR(r->url, curl);
 
   int status;
   git_checkout_opts checkout_opts = {};
@@ -450,7 +450,7 @@ V8_SCB(Repository::Clone) {
     delete [] curl;
     r->out = NULL;
   }
-} GITTEH_WORK_AFTER(repo_clone) {
+} SENCILLO_WORK_AFTER(repo_clone) {
   v8::Handle<v8::Value> argv [2];
   if (r->out) {
     argv[0] = v8::Null();
@@ -459,8 +459,8 @@ V8_SCB(Repository::Clone) {
     argv[0] = composeErr(r->err);
     argv[1] = v8::Null();
   }
-  GITTEH_WORK_CALL(2);
-} GITTEH_END
+  SENCILLO_WORK_CALL(2);
+} SENCILLO_END
 
 V8_SCB(Repository::CloneSync) {
   int len = args.Length(); // don't count the callback
@@ -468,9 +468,9 @@ V8_SCB(Repository::CloneSync) {
   if (len > 3) len = 3;
 
   v8::String::Utf8Value url (args[0]);
-  GITTEH_SYNC_CSTR(url, curl);
+  SENCILLO_SYNC_CSTR(url, curl);
   v8::String::Utf8Value path (args[1]);
-  GITTEH_SYNC_CSTR(path, cpath);
+  SENCILLO_SYNC_CSTR(path, cpath);
 
   int status;
   git_repository* out;

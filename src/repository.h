@@ -23,14 +23,13 @@
  * THE SOFTWARE.
  */
 
-#ifndef GITTEH_REPOSITORY_H
-#define	GITTEH_REPOSITORY_H
+#ifndef SENCILLO_REPOSITORY_H
+#define	SENCILLO_REPOSITORY_H
 
 #include "git2.h"
-
 #include "v8u.hpp"
 
-namespace gitteh {
+namespace sencillo {
 
 class Repository : public node::ObjectWrap {
 public:
@@ -56,5 +55,5 @@ public:
 
 };
 
-#endif	/* GITTEH_REPOSITORY_H */
+#endif	/* SENCILLO_REPOSITORY_H */
 

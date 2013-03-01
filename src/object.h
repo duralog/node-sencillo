@@ -23,12 +23,12 @@
  * THE SOFTWARE.
  */
 
-#ifndef GITTEH_OBJECT_H
-#define	GITTEH_OBJECT_H
+#ifndef SENCILLO_OBJECT_H
+#define	SENCILLO_OBJECT_H
 
 #include "v8u.hpp"
 
-namespace gitteh {
+namespace sencillo {
 
 class GitObject : public node::ObjectWrap {
 public:
@@ -40,5 +40,5 @@ public:
 
 };
 
-#endif	/* GITTEH_OBJECT_H */
+#endif	/* SENCILLO_OBJECT_H */
 

@@ -23,12 +23,12 @@
  * THE SOFTWARE.
  */
 
-#ifndef GITTEH_MESSAGE_H
-#define	GITTEH_MESSAGE_H
+#ifndef SENCILLO_MESSAGE_H
+#define	SENCILLO_MESSAGE_H
 
 #include "v8u.hpp"
 
-namespace gitteh {
+namespace sencillo {
 
 // Until LibGit2 allows custom-length messages here,
 // all 0x00s in the message will be removed,
@@ -37,5 +37,5 @@ V8_SCB(Prettify);
 
 };
 
-#endif	/* GITTEH_MESSAGE_H */
+#endif	/* SENCILLO_MESSAGE_H */
 

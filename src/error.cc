@@ -28,7 +28,7 @@
 #include "error.h"
 
 
-namespace gitteh {
+namespace sencillo {
 
 void check(int status) {
   if (status==GIT_OK) return;
