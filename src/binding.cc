@@ -36,6 +36,7 @@
 #include "repository.h"
 
 #define GITTEH_VERSION 0,1,0
+#define SENCILLO_VERSION 0,1,1
 
 using v8u::Symbol;
 using v8u::Version;
@@ -57,9 +58,10 @@ NODE_DEF_MAIN() {
   Version::init(target);
   Local<v8::Object> versions = v8u::Obj();
   versions->Set(Symbol("gitteh"), (new Version(GITTEH_VERSION))->Wrapped());
+  versions->Set(Symbol("sencillo"), (new Version(SENCILLO_VERSION))->Wrapped());
   versions->Set(Symbol("libgit2"), libgit2Version());
   target->Set(Symbol("versions"), versions);
-  
+
   // Other LibGit2 info
   target->Set(Symbol("capabilities"), Int(git_libgit2_capabilities()));
 

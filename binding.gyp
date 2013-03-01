@@ -4,8 +4,11 @@
   },
   "targets": [
     {
-      "target_name": "gitteh",
-      "include_dirs": [ 'deps/libgit2/include' ],
+      "target_name": "sencillo",
+      "include_dirs": [
+        'deps/libgit2/include',
+        'deps/v8-convert'
+      ],
       "sources": [ "src/binding.cc"
       , "src/common.cc"
       , "src/error.cc"

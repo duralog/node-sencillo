@@ -37,6 +37,16 @@ using v8::Local;
 using v8::Persistent;
 using v8::Function;
 
+/* Shamelessly borrowed from http://stackoverflow.com/questions/3417837/ */
+#ifdef UNUSED
+#elif defined(__GNUC__)
+# define UNUSED(x) UNUSED_ ## x __attribute__((unused))
+#elif defined(__LCLINT__)
+# define UNUSED(x) /*@unused@*/ x
+#else
+# define UNUSED(x) x
+#endif
+
 namespace gitteh {
 
 Repository::Repository(git_repository* ptr): repo(ptr) {}
@@ -335,58 +345,40 @@ V8_SCB(Repository::InitSync) {
 
 //// Repository.clone(url, path, [bare], callback)
 
+// testing command:
+// // require \./build/Debug/sencillo .Repository.cloneSync 'https://github.com/duralog/node-zopfli.git', \/tmp/zopfli20, onprogress: -> console.log &
+
 typedef struct progress_data {
-  git_transfer_progress fetch_progress;
-  size_t completed_steps;
-  size_t total_steps;
-  const char *path;
   Persistent<Function> cb;
 } progress_data;
 
-static void progress_callback(const progress_data *pd) {
+static int fetch_progress(const git_transfer_progress *stats, void *payload) {
+  progress_data *pd = (progress_data*)payload;
   if(pd->cb->IsFunction()) {
     v8::Handle<v8::Object> o = v8::Object::New();
-    o->Set(stats_bytes_symbol, v8::Number::New(pd->fetch_progress.received_bytes));
-    o->Set(stats_received_symbol, v8::Number::New(pd->fetch_progress.received_objects));
-    o->Set(stats_indexed_symbol, v8::Number::New(pd->fetch_progress.indexed_objects));
-    o->Set(stats_total_symbol, v8::Number::New(pd->fetch_progress.total_objects));
-    o->Set(stats_steps_complete_symbol, v8::Number::New(pd->completed_steps));
-    o->Set(stats_steps_symbol, v8::Number::New(pd->total_steps));
-    o->Set(stats_path_symbol, v8::String::New(pd->path));
+    o->Set(stats_bytes_symbol, v8::Number::New(stats->received_bytes));
+    o->Set(stats_received_symbol, v8::Number::New(stats->received_objects));
+    o->Set(stats_indexed_symbol, v8::Number::New(stats->indexed_objects));
+    o->Set(stats_total_symbol, v8::Number::New(stats->total_objects));
 
     v8::Handle<v8::Value> argv[] = { o };
     gitteh::FireCallback(pd->cb, 1, argv);
   }
-
-  //int network_percent = (100*pd->fetch_progress.received_objects) / pd->fetch_progress.total_objects;
-  //int index_percent = (100*pd->fetch_progress.indexed_objects) / pd->fetch_progress.total_objects;
-  //int checkout_percent = pd->total_steps > 0
-  //  ? (100 * pd->completed_steps) / pd->total_steps
-  //  : 0.f;
-  //int kbytes = pd->fetch_progress.received_bytes / 1024;
-
-  /*printf("net %3d%% (%4d kb, %5d/%5d)  /  idx %3d%% (%5d/%5d)  /  chk %3d%% (%4" PRIuZ "/%4" PRIuZ ") %s\n",
-       network_percent, kbytes,
-       pd->fetch_progress.received_objects, pd->fetch_progress.total_objects,
-       index_percent, pd->fetch_progress.indexed_objects, pd->fetch_progress.total_objects,
-       checkout_percent,
-       pd->completed_steps, pd->total_steps,
-       pd->path);*/
-}
-
-static int fetch_progress(const git_transfer_progress *stats, void *payload) {
-  progress_data *pd = (progress_data*)payload;
-  pd->fetch_progress = *stats;
-  progress_callback(pd);
+  //TODO: canceling of fetch
   return 0;
 }
 
 static void checkout_progress(const char *path, size_t cur, size_t tot, void *payload) {
   progress_data *pd = (progress_data*)payload;
-  pd->completed_steps = cur;
-  pd->total_steps = tot;
-  pd->path = path;
-  progress_callback(pd);
+  printf("checkout (%ld/%ld)\n", cur, tot);
+  if(pd->cb->IsFunction()) {
+    v8::Handle<v8::Object> o = v8::Object::New();
+    o->Set(stats_steps_complete_symbol, v8::Number::New(cur));
+    o->Set(stats_steps_symbol, v8::Number::New(tot));
+    //o->Set(stats_path_symbol, v8::String::New(path));
+    v8::Handle<v8::Value> argv[] = { o };
+    gitteh::FireCallback(pd->cb, 1, argv);
+  }
 }
 
 GITTEH_WORK_PRE(repo_clone) {
@@ -399,20 +391,20 @@ GITTEH_WORK_PRE(repo_clone) {
   Persistent<Function> progress_cb;
   Persistent<Function> creds_cb;
   Persistent<Function> cb;
-  progress_data pd;
+  progress_data* pd;
   uv_work_t req;
 };
 
 V8_SCB(Repository::Clone) {
   int len = args.Length()-1; // don't count the callback
   if (len < 2) V8_STHROW(v8u::RangeErr("Not enough arguments!"));
-  if (len > 2) V8_STHROW(v8u::RangeErr("flags are not implemented yet!"));
   if (len > 2) len = 2;
   if (!args[len]->IsFunction()) {
     V8_STHROW(v8u::TypeErr("An Function is needed as callback!"));
   }
 
   repo_clone_req* r = new repo_clone_req;
+  r->pd = new progress_data;
   r->url = new v8::String::Utf8Value(args[0]);
   r->path = new v8::String::Utf8Value(args[1]);
 
@@ -421,8 +413,9 @@ V8_SCB(Repository::Clone) {
     opts = v8::Object::Cast(*args[len-1]);
     Local<v8::Value>progress_cb = opts->Get(stats_onprogress_symbol);
     if(progress_cb->IsFunction()) {
-      r->pd.cb = v8::Function::Cast(*progress_cb);
-    }
+      printf("progress func\n");
+      r->pd->cb = v8u::Persist<Function>(v8u::Cast<Function>(progress_cb));
+    } else printf("NO progress func\n");
   }
 
   GITTEH_WORK_QUEUE(repo_clone);
@@ -435,17 +428,18 @@ V8_SCB(Repository::Clone) {
   checkout_opts.version = GIT_CHECKOUT_OPTS_VERSION;
   checkout_opts.checkout_strategy = GIT_CHECKOUT_SAFE_CREATE;
   checkout_opts.progress_cb = checkout_progress;
-  checkout_opts.progress_payload = &r->pd;
+  checkout_opts.progress_payload = r->pd;
 
   git_clone_options opts = {};
   opts.version = GIT_CLONE_OPTIONS_VERSION;
   opts.checkout_opts = checkout_opts;
   opts.fetch_progress_cb = &fetch_progress;
-  opts.fetch_progress_payload = &r->pd;
+  opts.fetch_progress_payload = r->pd;
   // TODO: credentials callback
   //opts.cred_acquire_cb = cred_acquire;
 
   status = git_clone(&r->out, curl, cpath, &opts);
+  delete r->pd;
 
   if (status == GIT_OK) {
     delete [] cpath;
@@ -471,8 +465,7 @@ V8_SCB(Repository::Clone) {
 V8_SCB(Repository::CloneSync) {
   int len = args.Length(); // don't count the callback
   if (len < 2) V8_STHROW(v8u::RangeErr("Not enough arguments!"));
-  if (len > 2) V8_STHROW(v8u::RangeErr("flags are not implemented yet!"));
-  if (len > 2) len = 2;
+  if (len > 3) len = 3;
 
   v8::String::Utf8Value url (args[0]);
   GITTEH_SYNC_CSTR(url, curl);
@@ -482,19 +475,19 @@ V8_SCB(Repository::CloneSync) {
   int status;
   git_repository* out;
   error_info err;
-  progress_data pd = {};
+  progress_data* pd = new progress_data;
 
   git_checkout_opts checkout_opts = {};
   checkout_opts.version = GIT_CHECKOUT_OPTS_VERSION;
   checkout_opts.checkout_strategy = GIT_CHECKOUT_SAFE_CREATE;
   checkout_opts.progress_cb = checkout_progress;
-  checkout_opts.progress_payload = &pd;
+  checkout_opts.progress_payload = pd;
 
   git_clone_options clone_opts = {};
   clone_opts.version = GIT_CLONE_OPTIONS_VERSION;
   clone_opts.checkout_opts = checkout_opts;
   clone_opts.fetch_progress_cb = &fetch_progress;
-  clone_opts.fetch_progress_payload = &pd;
+  clone_opts.fetch_progress_payload = pd;
   // TODO: credentials callback
   //opts.cred_acquire_cb = cred_acquire;
 
@@ -502,13 +495,16 @@ V8_SCB(Repository::CloneSync) {
     Local<v8::Object> opts = v8::Object::Cast(*args[2]);
     Local<v8::Value>progress_cb = opts->Get(stats_onprogress_symbol);
     if(progress_cb->IsFunction()) {
-      pd.cb = v8::Function::Cast(*progress_cb);
-    }
+      printf("progress func\n");
+      pd->cb = v8u::Persist<Function>(v8u::Cast<Function>(progress_cb));
+    } else printf("NO progress func\n");
   }
 
   status = git_clone(&out, curl, cpath, &clone_opts);
 
   delete [] cpath;
+  delete [] curl;
+  delete pd;
   if (status == GIT_OK) return (new Repository(out))->Wrapped();
   collectErr(status, err);
   V8_STHROW(composeErr(err));

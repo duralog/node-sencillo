@@ -27,6 +27,7 @@
 #define	GITTEH_COMMON_H
 
 #include "v8u.hpp"
+#include "cvv8/convert.hpp"
 
 namespace gitteh {
 
@@ -50,15 +51,15 @@ V8_SCB(_isAbstract);
 //Unwrapping and starting work statement-macros
 //TODO: DO SOMETHING WITH STRINGS THAT CONTAIN '\0'
 #define GITTEH_ASYNC_CSTR(OBJ, VAR)                                            \
-  int VAR##_len = OBJ->length();                                                     \
-  char* VAR = new char[VAR##_len+1];                                                 \
-  memcpy(VAR, **OBJ, VAR##_len);                                                     \
+  int VAR##_len = OBJ->length();                                               \
+  char* VAR = new char[VAR##_len+1];                                           \
+  memcpy(VAR, **OBJ, VAR##_len);                                               \
   delete OBJ;                                                                  \
   VAR[VAR##_len] = 0
 #define GITTEH_SYNC_CSTR(OBJ, VAR)                                             \
-  int VAR##_len = OBJ.length();                                                      \
-  char* VAR = new char[VAR##_len+1];                                                 \
-  memcpy(VAR, *OBJ, VAR##_len);                                                      \
+  int VAR##_len = OBJ.length();                                                \
+  char* VAR = new char[VAR##_len+1];                                           \
+  memcpy(VAR, *OBJ, VAR##_len);                                                \
   VAR[VAR##_len] = 0
 
 #define GITTEH_WORK_UNWRAP(IDENTIFIER)                                         \
@@ -74,7 +75,7 @@ V8_SCB(_isAbstract);
   delete r;                                                                    \
   if (try_catch.HasCaught()) node::FatalException(try_catch)
 
-#define SENCILLO_CB_CALL(CB, ARGC)                                                 \
+#define SENCILLO_CB_CALL(CB, ARGC)                                             \
   v8::TryCatch try_catch;                                                      \
   r->cb->Call(v8::Context::GetCurrent()->Global(), ARGC, argv);                \
   r->cb.Dispose();                                                             \
