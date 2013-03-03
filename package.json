@@ -2,7 +2,7 @@
   "name": "sencillo",
   "version": "0.1.2",
   "description": "Bindings to libgit2... de una forma sencilla",
-  "keywords": "git, libgit2, bindings",
+  "keywords": [ "git", "libgit2", "bindings" ],
   "homepage": "https://github.com/duralog/node-sencillo",
 
   "author": "Kenneth Bentley <funisher@gmail.com>",
