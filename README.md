@@ -2,6 +2,21 @@
 
 **NOTE: Sencillo is currently undergoing heavy refactoring/rewriting. It will eventually look quite different from what it does now. the idea is to make good bindings, and also make the simple things (common every day commands) as easy as possible to use.
 
+all this came from a [branch of gitteh](https://github.com/jmendeth/node-gitteh). this is not gitteh original! thanks @jmendeth!!
+
+## Installation
+
+	npm install sencillo
+
+Currently, installing Sencillo with NPM means it will compile it's own bundled version of libgit2, even if it's already installed on your system. this is to avoid breaking functionality.
+
+## Future
+
+ * compile everything with node-gyp, and skip the cmake step entirely.
+ * examples, etc. everything really. shitloads of stuff to do...
+
+---
+
 # OLD DOCS
 
 ## What?
