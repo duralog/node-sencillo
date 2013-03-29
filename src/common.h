@@ -67,7 +67,7 @@ V8_SCB(_isAbstract);
 #define SENCILLO_WORK_QUEUE(IDENTIFIER)                                          \
   r->req.data = r;                                                             \
   return v8::Integer::New(uv_queue_work(uv_default_loop(), &r->req,            \
-                                        IDENTIFIER##_work, IDENTIFIER##_after))
+                                        IDENTIFIER##_work, (uv_after_work_cb)IDENTIFIER##_after))
 #define SENCILLO_WORK_CALL(ARGC)                                                 \
   v8::TryCatch try_catch;                                                      \
   r->cb->Call(v8::Context::GetCurrent()->Global(), ARGC, argv);                \
